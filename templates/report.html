@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="stylesheet" id="hljs-light" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<link rel="stylesheet" id="hljs-dark" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" disabled>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --border: #dde1e7; --text: #1c2330; --muted: #5d6878;
+  --accent: #3b5bdb; --accent-soft: #e7ecff; --hl: #fff6cc;
+  --ok: #2f9e44; --ok-soft: #e9f8ee; --bad: #d32f2f; --bad-soft: #fdecec; --warn: #b7791f; --warn-soft: #fff4dc;
+  --info: #1971c2; --info-soft: #e7f1fb; --gray: #6b7280;
+  --k-input: #3b5bdb; --k-validation: #b7791f; --k-branch: #7048e8; --k-transform: #0c8599; --k-db: #2f9e44;
+  --k-ext: #e8590c; --k-state: #c2255c; --k-error: #d32f2f; --k-out: #495057;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1218; --panel: #161a22; --panel-2: #1c212b; --border: #2a303c; --text: #e3e7ee; --muted: #97a1b2;
+    --accent: #7c95ff; --accent-soft: #232b48; --hl: #3a3417;
+    --ok: #56d17a; --ok-soft: #12261a; --bad: #ff7b7b; --bad-soft: #2c1517; --warn: #f0b44c; --warn-soft: #2e2512;
+    --info: #74b4ff; --info-soft: #14243a; --gray: #9aa3b2;
+    --k-input: #7c95ff; --k-validation: #f0b44c; --k-branch: #a98bff; --k-transform: #3bc9db; --k-db: #56d17a;
+    --k-ext: #ff9b5c; --k-state: #f783ac; --k-error: #ff7b7b; --k-out: #adb5bd;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1218; --panel: #161a22; --panel-2: #1c212b; --border: #2a303c; --text: #e3e7ee; --muted: #97a1b2;
+  --accent: #7c95ff; --accent-soft: #232b48; --hl: #3a3417;
+  --ok: #56d17a; --ok-soft: #12261a; --bad: #ff7b7b; --bad-soft: #2c1517; --warn: #f0b44c; --warn-soft: #2e2512;
+  --info: #74b4ff; --info-soft: #14243a; --gray: #9aa3b2;
+  --k-input: #7c95ff; --k-validation: #f0b44c; --k-branch: #a98bff; --k-transform: #3bc9db; --k-db: #56d17a;
+  --k-ext: #ff9b5c; --k-state: #f783ac; --k-error: #ff7b7b; --k-out: #adb5bd;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); }
+a { color: var(--accent); }
+code, pre { font-family: var(--mono); font-size: 12.5px; }
+:not(pre) > code { background: var(--panel-2); border: 1px solid var(--border); padding: 0 4px; border-radius: 4px; }
+button { font: inherit; color: inherit; }
+.topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); min-height: 53px; }
+.topbar .title { font-weight: 650; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
+.pill { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); padding: 1px 7px; border-radius: 6px;
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spacer { flex: 1; }
+.btn { border: 1px solid var(--border); background: var(--panel); padding: 5px 10px; border-radius: 7px; cursor: pointer; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--panel-2); }
+.btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.verdict { padding: 3px 10px; border-radius: 999px; font-weight: 650; font-size: 12.5px; color: #fff; white-space: nowrap; }
+.v-bug_found { background: var(--bad); } .v-risks_found { background: var(--warn); } .v-works_as_expected { background: var(--ok); }
+.v-reproduced { background: #7048e8; } .v-not_reproduced, .v-inconclusive { background: var(--gray); }
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: calc(100vh - 53px); }
+.sidebar { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.main { overflow: auto; padding: 18px 22px 80px; }
+.nav { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.nav a, .sc-item { display: flex; gap: 8px; align-items: center; padding: 6px 14px; cursor: pointer; font-size: 13px; color: var(--text);
+  text-decoration: none; border-left: 3px solid transparent; }
+.nav a:hover, .sc-item:hover { background: var(--panel-2); }
+.nav a.current, .sc-item.current { background: var(--accent-soft); border-left-color: var(--accent); }
+.nav .count { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.side-top { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+.search { width: 100%; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-size: 11.5px; cursor: pointer; background: var(--panel); user-select: none; }
+.chip.off { opacity: .4; text-decoration: line-through; }
+.sc-list { overflow: auto; flex: 1; padding: 4px 0; }
+.sc-item { align-items: flex-start; }
+.sc-item .t { flex: 1; min-width: 0; }
+.sc-item .t .o { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-item .id { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 34px; padding-top: 1px; }
+.st { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 650; line-height: 18px;
+  white-space: nowrap; text-transform: uppercase; letter-spacing: .02em; }
+.st-pass { background: var(--ok-soft); color: var(--ok); } .st-fail, .st-bug { background: var(--bad-soft); color: var(--bad); }
+.st-risk { background: var(--warn-soft); color: var(--warn); } .st-expected_error { background: var(--info-soft); color: var(--info); }
+.st-reproduced { background: #efe9ff; color: #6741d9; } .st-inconclusive { background: var(--panel-2); color: var(--gray); }
+:root[data-theme="dark"] .st-reproduced { background: #2a2246; color: #b49bff; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; margin-top: 5px; }
+.d-pass { background: var(--ok); } .d-fail, .d-bug { background: var(--bad); } .d-risk { background: var(--warn); }
+.d-expected_error { background: var(--info); } .d-reproduced { background: #7048e8; } .d-inconclusive { background: var(--gray); }
+.tag { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11.5px; border: 1px solid var(--border); color: var(--muted); line-height: 18px; white-space: nowrap; }
+.sev { color: #fff; font-weight: 650; text-transform: uppercase; font-size: 11px; padding: 0 7px; border-radius: 999px; line-height: 18px; }
+.sev-critical { background: var(--bad); } .sev-major { background: #e8590c; } .sev-minor { background: var(--warn); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.card > header { padding: 11px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card > header h2 { margin: 0; font-size: 15px; }
+.card .body { padding: 14px 16px; }
+.card .body.flush { padding: 0; }
+h1.page { font-size: 20px; margin: 0 0 4px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.sub { color: var(--muted); margin: 0 0 14px; }
+h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 16px 0 8px; }
+.headline { font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px; }
+.stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 96px; }
+.stat .n { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat .l { font-size: 12px; color: var(--muted); }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.t th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 7px 10px; border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; }
+table.t td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.t tr.click { cursor: pointer; } table.t tr.click:hover td { background: var(--panel-2); }
+.loc { font-family: var(--mono); font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: none; white-space: nowrap; }
+.loc:hover { text-decoration: underline; }
+.md p { margin: 0 0 8px; } .md ul { margin: 4px 0 8px; padding-left: 20px; } .md p:last-child { margin-bottom: 0; }
+.muted { color: var(--muted); }
+pre.json { margin: 0; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; overflow: auto; max-height: 360px; white-space: pre; }
+.j-k { color: #7048e8; } .j-s { color: #2b8a3e; } .j-n { color: #1971c2; } .j-b { color: #c2255c; } .j-null { color: var(--gray); }
+:root[data-theme="dark"] .j-k { color: #b49bff; } :root[data-theme="dark"] .j-s { color: #8ce99a; } :root[data-theme="dark"] .j-n { color: #74c0fc; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .j-k { color: #b49bff; } :root:not([data-theme="light"]) .j-s { color: #8ce99a; } :root:not([data-theme="light"]) .j-n { color: #74c0fc; } }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+.kv > div:nth-child(odd) { color: var(--muted); }
+.decisions { display: flex; flex-wrap: wrap; gap: 6px; }
+.decision { border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; font-size: 12.5px; background: var(--panel-2); cursor: pointer; }
+.decision b.tv { color: var(--ok); } .decision b.fv { color: var(--bad); } .decision b.ov { color: var(--info); }
+/* timeline */
+.tl-wrap { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr); gap: 0; }
+.timeline { padding: 12px 14px 12px 12px; border-right: 1px solid var(--border); }
+.scrub { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.scrub input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.step { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; position: relative; padding-bottom: 12px; cursor: pointer; }
+.step::before { content: ""; position: absolute; left: 14px; top: 28px; bottom: 0; width: 2px; background: var(--border); }
+.step:last-child::before { display: none; }
+.step .num { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #fff;
+  background: var(--kc, var(--gray)); z-index: 1; box-shadow: 0 0 0 3px var(--panel); }
+.step .sb { border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--panel); min-width: 0; transition: box-shadow .12s, border-color .12s; }
+.step.cur .sb { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.step.future { opacity: .55; }
+.step .sh { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.step .sh b { font-size: 13.5px; }
+.kind { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--kc); border: 1px solid currentColor;
+  padding: 0 6px; border-radius: 5px; line-height: 17px; white-space: nowrap; }
+.k-input, .k-parse { --kc: var(--k-input); } .k-validation, .k-auth { --kc: var(--k-validation); } .k-branch { --kc: var(--k-branch); }
+.k-transform, .k-cache { --kc: var(--k-transform); } .k-lookup, .k-db_read, .k-db_write { --kc: var(--k-db); }
+.k-external_call, .k-event, .k-job, .k-side_effect { --kc: var(--k-ext); } .k-state_change { --kc: var(--k-state); }
+.k-error { --kc: var(--k-error); } .k-response, .k-return, .k-entry, .k-output, .k-middleware, .k-callback { --kc: var(--k-out); }
+.step .detail { font-size: 13px; margin-top: 4px; }
+.changes { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12.5px; table-layout: fixed; }
+.changes td { padding: 3px 6px; border-top: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+.changes td.p { width: 30%; color: var(--text); font-weight: 600; }
+.changes td.op { width: 62px; color: var(--muted); font-family: var(--sans); font-size: 11px; text-transform: uppercase; }
+.before { color: var(--bad); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.after { color: var(--ok); }
+.arrow { color: var(--muted); padding: 0 4px; }
+.box { margin-top: 6px; border-radius: 7px; padding: 6px 9px; font-size: 12.5px; border: 1px solid var(--border); background: var(--panel-2); overflow-wrap: anywhere; }
+.box .h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.box.db .h { color: var(--k-db); } .box.ext .h { color: var(--k-ext); } .box.state .h { color: var(--k-state); }
+.box pre { margin: 2px 0 0; white-space: pre-wrap; }
+.flag { margin-top: 6px; border-radius: 7px; padding: 6px 9px; font-size: 13px; }
+.flag.bug { background: var(--bad-soft); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); }
+.flag.risk { background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+.flag.note { background: var(--info-soft); color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 35%, transparent); }
+.state-panel { padding: 0; min-width: 0; position: relative; }
+.state-panel .sticky { position: sticky; top: 0; max-height: calc(100vh - 140px); overflow: auto; }
+.state-panel table td { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.state-panel tr.changed td { background: var(--hl); }
+.state-panel tr.removed td.v { text-decoration: line-through; color: var(--muted); }
+.state-panel td.by { font-family: var(--sans); color: var(--muted); font-size: 11px; white-space: nowrap; }
+.outcome-ok { border-left: 4px solid var(--ok); } .outcome-bad { border-left: 4px solid var(--bad); }
+/* flow matrix */
+.matrix { overflow: auto; }
+.matrix table { border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.matrix th, .matrix td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.matrix th.scol { writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--mono); font-size: 11.5px; padding: 8px 4px; cursor: pointer; }
+.matrix td.cell { text-align: center; padding: 0 6px; position: relative; min-width: 30px; }
+.matrix td.cell .pd { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.matrix td.cell.on::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--pc); opacity: .35; }
+.matrix td.cell .pd { position: relative; z-index: 1; background: var(--pc); }
+.matrix td.node { white-space: normal; min-width: 260px; }
+.matrix tr:hover td { background: var(--panel-2); }
+.tv-cell { font-weight: 700; font-family: var(--mono); font-size: 12px; } .tv-true { color: var(--ok); } .tv-false { color: var(--bad); }
+/* code drawer */
+.drawer { position: fixed; top: 53px; right: 0; bottom: 0; width: min(760px, 58vw); background: var(--panel); border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0,0,0,.12); transform: translateX(105%); transition: transform .18s ease; z-index: 40; display: flex; flex-direction: column; }
+.drawer.open { transform: none; }
+.drawer header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+.drawer header .path { font-family: var(--mono); font-size: 12.5px; font-weight: 600; flex: 1; overflow-wrap: anywhere; }
+.drawer .code { overflow: auto; flex: 1; font-family: var(--mono); font-size: 12.5px; }
+.cl { display: grid; grid-template-columns: 54px 56px minmax(0, 1fr); line-height: 20px; }
+.cl .ln { color: var(--muted); text-align: right; padding-right: 10px; user-select: none; }
+.cl .mk { display: flex; gap: 2px; align-items: center; justify-content: flex-start; }
+.cl .mk span { font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 4px; padding: 0 4px; line-height: 15px; cursor: pointer; }
+.cl .mk span.bugm { background: var(--bad); }
+.cl .src { white-space: pre; padding-right: 12px; }
+.cl.hit { background: var(--hl); }
+.cl.ran .ln { color: var(--ok); font-weight: 600; }
+.ref-list { margin: 0; padding-left: 18px; font-size: 13px; }
+.bugcard { border-left: 4px solid var(--bad); }
+.bugcard.minor { border-left-color: var(--warn); }
+.fix pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; margin: 6px 0 0; }
+.frames td.app { font-weight: 600; } .frames tr.lib td { color: var(--muted); }
+details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.ev-row td { font-family: var(--mono); font-size: 12px; }
+.ev-call td.e { color: var(--k-branch); } .ev-return td.e { color: var(--k-out); } .ev-sql td.e { color: var(--k-db); }
+.ev-http td.e { color: var(--k-ext); } .ev-exception td.e { color: var(--k-error); font-weight: 700; } .ev-line td.e { color: var(--k-state); }
+.help { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; place-items: center; z-index: 60; }
+.help.open { display: grid; }
+.help .card { width: min(460px, 92vw); }
+kbd { font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel-2); }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 6px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; z-index: 70; }
+.toast.show { opacity: .92; }
+.empty { color: var(--muted); font-style: italic; }
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: 1fr; height: auto; }
+  .sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 46vh; }
+  .main { padding: 14px 16px 60px; overflow: visible; }
+  .grid2, .tl-wrap { grid-template-columns: 1fr; }
+  .timeline { border-right: 0; border-bottom: 1px solid var(--border); }
+  .drawer { width: 100vw; }
+  .topbar .title { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="title" id="title"></span>
+  <span class="pill" id="target"></span>
+  <span id="verdict"></span>
+  <span class="spacer"></span>
+  <button class="btn" id="copyMd" title="Copy the summary as Markdown">Copy MD</button>
+  <button class="btn" id="themeBtn" title="Toggle theme (t)">◐</button>
+  <button class="btn" id="helpBtn" title="Keyboard shortcuts (?)">?</button>
+</div>
+<div class="layout">
+  <aside class="sidebar">
+    <nav class="nav" id="nav"></nav>
+    <div class="side-top">
+      <input class="search" id="search" placeholder="Filter scenarios…  ( / )">
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="sc-list" id="scList"></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<aside class="drawer" id="drawer" aria-label="Source code">
+  <header><span class="path" id="dPath"></span><button class="btn" id="dClose" title="Close (Esc)">✕</button></header>
+  <div class="code" id="dCode"></div>
+</aside>
+<div class="help" id="help"><div class="card"><header><h2>Keyboard shortcuts</h2></header><div class="body kv">
+  <div><kbd>j</kbd> / <kbd>k</kbd></div><div>next / previous step</div>
+  <div><kbd>]</kbd> / <kbd>[</kbd></div><div>next / previous scenario</div>
+  <div><kbd>o</kbd> <kbd>f</kbd> <kbd>b</kbd> <kbd>r</kbd></div><div>overview, flow map, bugs, reproduction</div>
+  <div><kbd>c</kbd></div><div>open the code of the current step</div>
+  <div><kbd>/</kbd></div><div>filter scenarios</div>
+  <div><kbd>t</kbd></div><div>toggle theme</div>
+  <div><kbd>Esc</kbd></div><div>close the code / this help</div>
+</div></div></div>
+<div class="toast" id="toast"></div>
+<script type="application/json" id="data">__INVESTIGATION_DATA__</script>
+<script>
+(function () {
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const INV = D.investigation, META = D.meta || {}, SRC = D.sources || {}, TR = D.traces || {};
+const S = INV.summary || {};
+const SCS = INV.scenarios || [];
+const BUGS = INV.bugs || [];
+const NODES = (INV.flow || {}).nodes || [];
+const CONDS = INV.conditions || [];
+const REP = INV.reproduction || null;
+const ST = D.stacktrace || null;
+const $ = (s, r) => (r || document).querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const VERDICT = {bug_found: "Bug found", risks_found: "Risks found", works_as_expected: "Works as expected", reproduced: "Reproduced",
+  not_reproduced: "Not reproduced", inconclusive: "Inconclusive"};
+const STATUS = {pass: "Pass", fail: "Fail", bug: "Bug", risk: "Risk", expected_error: "Expected error", reproduced: "Reproduced", inconclusive: "Inconclusive"};
+const KIND = {db_read: "DB read", db_write: "DB write", external_call: "External call", state_change: "State change", side_effect: "Side effect"};
+const kindLabel = k => KIND[k] || String(k || "").replace(/_/g, " ");
+const store = {get(k, d) { try { const v = localStorage.getItem("inv:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("inv:" + k, JSON.stringify(v)); } catch (e) {} }};
+
+/* ---------- tiny markdown ---------- */
+function inline(s) {
+  return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function md(s) {
+  if (!s) return "";
+  const out = []; let list = null;
+  String(s).split(/\n/).forEach(line => {
+    const m = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
+    if (m) { if (!list) { list = []; } list.push("<li>" + inline(m[1]) + "</li>"); return; }
+    if (list) { out.push("<ul>" + list.join("") + "</ul>"); list = null; }
+    if (line.trim()) out.push("<p>" + inline(line) + "</p>");
+  });
+  if (list) out.push("<ul>" + list.join("") + "</ul>");
+  return '<div class="md">' + out.join("") + "</div>";
+}
+function jsonHtml(v) {
+  let txt;
+  try { txt = typeof v === "string" ? v : JSON.stringify(v, null, 2); } catch (e) { txt = String(v); }
+  if (typeof v === "string") return '<pre class="json">' + esc(v) + "</pre>";
+  return '<pre class="json">' + esc(txt).replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)(\s*:)?|\b(true|false)\b|\bnull\b|-?\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/g,
+    (m, str, colon, bool) => str ? (colon ? '<span class="j-k">' + str + "</span>" + colon : '<span class="j-s">' + str + "</span>")
+      : bool ? '<span class="j-b">' + m + "</span>" : m === "null" ? '<span class="j-null">null</span>' : '<span class="j-n">' + m + "</span>") + "</pre>";
+}
+function val(v) {
+  if (v === undefined) return '<span class="muted">—</span>';
+  if (v === null) return '<span class="muted">null</span>';
+  if (typeof v === "string") return esc(v.length > 400 ? v.slice(0, 399) + "…" : v);
+  let s; try { s = JSON.stringify(v); } catch (e) { s = String(v); }
+  return esc(s.length > 400 ? s.slice(0, 399) + "…" : s);
+}
+function locLink(file, line, end, label) {
+  if (!file) return "";
+  const txt = label || (file + (line ? ":" + line + (end && end !== line ? "-" + end : "") : ""));
+  return '<a class="loc" data-file="' + esc(file) + '" data-line="' + (line || "") + '" data-end="' + (end || "") + '">' + esc(txt) + "</a>";
+}
+function statusPill(s) { return '<span class="st st-' + esc(s) + '">' + esc(STATUS[s] || s) + "</span>"; }
+
+/* ---------- top bar & nav ---------- */
+$("#title").textContent = INV.title || "Investigation";
+const tgt = INV.target || {};
+$("#target").textContent = tgt.label || (META.targets && META.targets[0] && META.targets[0].label) || META.repo_name || "";
+$("#target").title = (META.repo || "") + (META.branch ? " @ " + META.branch : "") + (META.sha ? " " + META.sha : "");
+if (S.verdict) $("#verdict").innerHTML = '<span class="verdict v-' + esc(S.verdict) + '">' + esc(VERDICT[S.verdict] || S.verdict) + "</span>";
+
+function renderNav() {
+  const items = [["overview", "Overview", ""], ["flow", "Flow map", NODES.length || CONDS.length ? (NODES.length + " nodes") : ""],
+    ["bugs", "Bugs", BUGS.length]];
+  if (REP || ST) items.push(["repro", "Reproduction", ""]);
+  if (D.context && (D.context.sources || []).length) items.push(["sources", "Context sources", D.context.sources.length]);
+  $("#nav").innerHTML = items.map(([id, label, c]) => '<a data-route="' + id + '" href="#' + id + '">' + esc(label) +
+    '<span class="count">' + esc(c) + "</span></a>").join("");
+}
+const FILTER = {q: "", off: new Set(store.get("off", []))};
+function renderChips() {
+  const present = [...new Set(SCS.map(s => s.status))];
+  $("#chips").innerHTML = present.map(s => '<span class="chip' + (FILTER.off.has(s) ? " off" : "") + '" data-st="' + esc(s) + '">' +
+    esc(STATUS[s] || s) + " " + SCS.filter(x => x.status === s).length + "</span>").join("");
+}
+function visibleScenarios() {
+  const q = FILTER.q.toLowerCase();
+  return SCS.filter(s => !FILTER.off.has(s.status) && (!q || (s.id + " " + s.title + " " + (s.category || "") + " " +
+    ((s.outcome || {}).result || "") + " " + (s.description || "")).toLowerCase().includes(q)));
+}
+function renderList() {
+  $("#scList").innerHTML = visibleScenarios().map(s => '<div class="sc-item" data-sc="' + esc(s.id) + '"><span class="dot d-' + esc(s.status) +
+    '"></span><span class="id">' + esc(s.id) + '</span><span class="t"><div>' + esc(s.title) + '</div><div class="o">' +
+    esc((s.outcome || {}).result || s.category || "") + "</div></span></div>").join("") ||
+    '<div class="sc-item"><span class="empty">No scenarios match.</span></div>';
+  markCurrent();
+}
+
+/* ---------- views ---------- */
+let route = {view: "overview"}, curStep = 0;
+function go(hash) { if (location.hash !== hash) location.hash = hash; else onRoute(); }
+function onRoute() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  const m = h.match(/^sc\/([^/]+)(?:\/(\d+))?$/);
+  if (m && SCS.find(s => s.id === m[1])) route = {view: "sc", id: m[1], step: m[2] ? +m[2] : null};
+  else if (/^bug\//.test(h)) route = {view: "bugs", bug: h.slice(4)};
+  else route = {view: ["overview", "flow", "bugs", "repro", "sources"].includes(h) ? h : "overview"};
+  render();
+}
+function markCurrent() {
+  document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("current", a.dataset.route === route.view));
+  document.querySelectorAll(".sc-item").forEach(a => a.classList.toggle("current", route.view === "sc" && a.dataset.sc === route.id));
+}
+function render() {
+  const main = $("#main");
+  if (route.view === "sc") main.innerHTML = viewScenario(SCS.find(s => s.id === route.id));
+  else if (route.view === "flow") main.innerHTML = viewFlow();
+  else if (route.view === "bugs") main.innerHTML = viewBugs();
+  else if (route.view === "repro") main.innerHTML = viewRepro();
+  else if (route.view === "sources") main.innerHTML = viewSources();
+  else main.innerHTML = viewOverview();
+  markCurrent();
+  if (route.view === "sc") { setStep(route.step ? route.step : 1, false); }
+  if (route.view === "bugs" && route.bug) { const el = document.getElementById("bug-" + route.bug); if (el) el.scrollIntoView({block: "start"}); }
+  else main.scrollTop = 0;
+  if (window.hljs) document.querySelectorAll("pre code[class*=language-]").forEach(el => { try { hljs.highlightElement(el); } catch (e) {} });
+}
+
+function viewOverview() {
+  const counts = {};
+  SCS.forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1; });
+  const executed = SCS.filter(s => s.evidence === "executed").length;
+  let h = '<div class="card"><div class="body"><p class="headline">' + esc(S.headline || "") + "</p>" + md(S.overview) +
+    '<div class="stats"><div class="stat"><div class="n">' + SCS.length + '</div><div class="l">scenarios</div></div>' +
+    Object.keys(counts).map(k => '<div class="stat"><div class="n">' + counts[k] + '</div><div class="l">' + esc(STATUS[k] || k) + "</div></div>").join("") +
+    '<div class="stat"><div class="n">' + BUGS.length + '</div><div class="l">bugs</div></div>' +
+    '<div class="stat"><div class="n">' + executed + "/" + SCS.length + '</div><div class="l">executed with tracer</div></div></div>' +
+    '<div class="muted" style="font-size:12.5px;margin-top:6px">' + esc([S.stack, D.discovery && (D.discovery.frameworks || []).join(", "),
+      META.branch && ("branch " + META.branch), META.sha, META.created].filter(Boolean).join(" · ")) + "</div></div></div>";
+  if (S.how_it_works) h += '<div class="card"><header><h2>How the flow works</h2></header><div class="body">' + md(S.how_it_works) + "</div></div>";
+  h += '<div class="card"><header><h2>Scenarios</h2><span class="muted">click a row to follow its data</span></header><div class="body flush"><table class="t"><thead><tr><th>#</th><th>Scenario</th><th>Category</th><th>Path decisions</th><th>Outcome</th><th>Status</th></tr></thead><tbody>' +
+    SCS.map(s => '<tr class="click" data-sc="' + esc(s.id) + '"><td><code>' + esc(s.id) + "</code></td><td>" + esc(s.title) +
+      (s.evidence === "executed" ? ' <span class="tag" title="Recorded with the runtime tracer">executed</span>' : "") + "</td><td>" +
+      esc((s.category || "").replace(/_/g, " ")) + "</td><td>" + (s.decisions || []).map(d => '<span class="tag">' + esc(d.condition) + "=" +
+      esc(String(d.value)) + "</span>").join(" ") + "</td><td>" + esc((s.outcome || {}).result || "") + "</td><td>" + statusPill(s.status) + "</td></tr>").join("") +
+    "</tbody></table></div></div>";
+  if (BUGS.length) h += '<div class="card"><header><h2>Bugs</h2></header><div class="body flush"><table class="t"><tbody>' +
+    BUGS.map(b => '<tr class="click" data-bug="' + esc(b.id) + '"><td><span class="sev sev-' + esc(b.severity) + '">' + esc(b.severity) + "</span></td><td><b>" +
+      esc(b.title) + "</b><div class=muted>" + esc(b.root_cause || b.description || "").slice(0, 220) + "</div></td><td>" + locLink(b.file, b.line, b.end_line) + "</td></tr>").join("") +
+    "</tbody></table></div></div>";
+  const ins = S.insights || [], recs = S.recommendations || [];
+  if (ins.length || recs.length) {
+    h += '<div class="grid2">';
+    if (ins.length) h += '<div class="card"><header><h2>Insights</h2></header><div class="body"><ul class="ref-list">' + ins.map(i => "<li>" +
+      (typeof i === "object" ? "<b>" + esc(i.title) + "</b> — " + inline(i.body || "") : inline(i)) + "</li>").join("") + "</ul></div></div>";
+    if (recs.length) h += '<div class="card"><header><h2>Recommendations</h2></header><div class="body"><ul class="ref-list">' + recs.map(r => "<li>" + inline(r) + "</li>").join("") + "</ul></div></div>";
+    h += "</div>";
+  }
+  const ds = INV.data_sources || [], cov = INV.coverage || {};
+  if (ds.length || cov.note || (cov.not_covered || []).length) {
+    h += '<div class="card"><header><h2>Where the test data came from</h2></header><div class="body">';
+    if (ds.length) h += '<table class="t"><tbody>' + ds.map(d => "<tr><td><span class=tag>" + esc(d.kind) + "</span></td><td>" +
+      (d.path && SRC[d.path] ? locLink(d.path, d.line) : "<code>" + esc(d.path || "") + "</code>") + "</td><td>" + inline(d.note || "") + "</td></tr>").join("") + "</tbody></table>";
+    if (cov.note) h += "<h3>Coverage</h3>" + md(cov.note);
+    if ((cov.not_covered || []).length) h += "<h3>Not covered</h3><ul class=ref-list>" + cov.not_covered.map(x => "<li>" + inline(x) + "</li>").join("") + "</ul>";
+    h += "</div></div>";
+  }
+  h += refsCard(INV.references, "References");
+  return h;
+}
+function refsCard(refs, title) {
+  if (!refs || !refs.length) return "";
+  return '<div class="card"><header><h2>' + esc(title) + '</h2></header><div class="body">' + refList(refs) + "</div></div>";
+}
+function refList(refs) {
+  return '<ul class="ref-list">' + (refs || []).map(r => '<li><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title || r.url) +
+    "</a>" + (r.note ? ' <span class="muted">— ' + esc(r.note) + "</span>" : "") + "</li>").join("") + "</ul>";
+}
+
+/* ---------- scenario ---------- */
+function stateTimeline(sc) {
+  // Cumulative state after each step: path -> {v, by, removed}
+  const snaps = [], cur = new Map();
+  (sc.steps || []).forEach((st, i) => {
+    const changed = new Set();
+    (st.changes || []).forEach(c => {
+      const removed = c.op === "delete" || c.op === "remove";
+      cur.set(c.path, {v: removed ? c.before : c.after, by: i + 1, removed, op: c.op || "set"});
+      changed.add(c.path);
+    });
+    if (st.state && st.state.entity) { cur.set(st.state.entity, {v: st.state.to, by: i + 1, op: "state"}); changed.add(st.state.entity); }
+    if (st.db && st.db.table && /INSERT|UPDATE|DELETE|UPSERT/i.test(st.db.op || "")) {
+      const k = "db." + st.db.table; cur.set(k, {v: (st.db.op || "").toUpperCase() + (st.db.result ? " → " + (typeof st.db.result === "string" ? st.db.result : JSON.stringify(st.db.result)) : ""), by: i + 1, op: "db"}); changed.add(k);
+    }
+    snaps.push({map: new Map(cur), changed});
+  });
+  return snaps;
+}
+let SNAPS = [];
+function viewScenario(sc) {
+  if (!sc) return '<p class="empty">Scenario not found.</p>';
+  SNAPS = stateTimeline(sc);
+  const out = sc.outcome || {}, inp = sc.input || {};
+  const bad = ["fail", "bug"].includes(sc.status);
+  let h = '<h1 class="page"><code>' + esc(sc.id) + "</code> " + esc(sc.title) + " " + statusPill(sc.status) +
+    (sc.category ? ' <span class="tag">' + esc(sc.category.replace(/_/g, " ")) + "</span>" : "") +
+    ' <span class="tag" title="' + (sc.evidence === "executed" ? "Recorded by running the code with the tracer" : "Traced by reading the code") + '">' +
+    esc(sc.evidence || "simulated") + "</span></h1>";
+  if (sc.description) h += '<div class="sub">' + inline(sc.description) + "</div>";
+  h += '<div class="grid2"><div class="card"><header><h2>Input</h2>' + (inp.kind ? '<span class="tag">' + esc(inp.kind) + "</span>" : "") + '</header><div class="body">' +
+    (inp.summary ? "<p style='margin-top:0'>" + inline(inp.summary) + "</p>" : "") +
+    (inp.request ? jsonHtml(inp.request) : "") + (inp.data !== undefined ? (inp.request ? "<h3>Data</h3>" : "") + jsonHtml(inp.data) : "") +
+    ((sc.fixtures || []).length ? "<h3>Fixtures / existing data</h3>" + sc.fixtures.map(f => "<div style='margin-bottom:8px'><b>" + esc(f.name) + "</b>" +
+      (f.source ? ' <span class="muted">from ' + esc(f.source) + "</span>" : "") + jsonHtml(f.data) + "</div>").join("") : "") +
+    '</div></div><div class="card ' + (bad ? "outcome-bad" : "outcome-ok") + '"><header><h2>Outcome</h2>' + statusPill(sc.status) + '</header><div class="body">' +
+    '<p class="headline" style="font-size:15px">' + esc(out.result || "—") + "</p>" +
+    '<div class="kv">' + (out.status_code != null ? "<div>Status</div><div><code>" + esc(out.status_code) + "</code></div>" : "") +
+    (out.expected ? "<div>Expected</div><div>" + inline(out.expected) + "</div>" : "") +
+    (out.matches_expected != null ? "<div>Matches?</div><div>" + (out.matches_expected ? '<b style="color:var(--ok)">yes</b>' : '<b style="color:var(--bad)">no</b>') + "</div>" : "") +
+    ((out.side_effects || []).length ? "<div>Side effects</div><div><ul class=ref-list style='padding-left:16px'>" + out.side_effects.map(x => "<li>" + inline(x) + "</li>").join("") + "</ul></div>" : "") +
+    "</div>" + (sc.error ? '<div class="flag bug"><b>' + esc(sc.error.type || "Error") + "</b>: " + esc(sc.error.message || "") + " " + locLink(sc.error.file, sc.error.line) + "</div>" : "") +
+    (out.response !== undefined ? "<h3>Response</h3>" + jsonHtml(out.response) : "") +
+    ((sc.bugs || []).length ? "<h3>Bugs</h3>" + sc.bugs.map(b => { const x = BUGS.find(y => y.id === b) || {}; return '<div><a href="#bug/' + esc(b) + '"><span class="sev sev-' + esc(x.severity) + '">' + esc(x.severity || "") + "</span> " + esc(x.title || b) + "</a></div>"; }).join("") : "") +
+    "</div></div></div>";
+  if ((sc.decisions || []).length) h += '<div class="card"><header><h2>Path decisions</h2><span class="muted">the conditions this input hits</span></header><div class="body decisions">' +
+    sc.decisions.map(d => { const c = CONDS.find(x => x.id === d.condition) || {}; const v = d.value;
+      const cls = v === true ? "tv" : v === false ? "fv" : "ov";
+      return '<span class="decision" data-file="' + esc(c.file || "") + '" data-line="' + esc(c.line || "") + '" title="' + esc(c.description || "") + '"><code>' + esc(d.condition) + "</code> " +
+        esc(c.expression || "") + ' → <b class="' + cls + '">' + esc(String(v)) + "</b>" + (d.note ? ' <span class="muted">' + esc(d.note) + "</span>" : "") + "</span>"; }).join("") + "</div></div>";
+  const steps = sc.steps || [];
+  h += '<div class="card"><header><h2>Data timeline</h2><span class="muted">' + steps.length + " steps · input → outcome</span></header>";
+  if (steps.length) {
+    h += '<div class="scrub"><button class="btn" id="prevStep" title="Previous step (k)">◀</button><input type="range" id="stepRange" min="1" max="' + steps.length +
+      '" value="1"><button class="btn" id="nextStep" title="Next step (j)">▶</button><span id="stepLbl" class="muted"></span></div>';
+    h += '<div class="tl-wrap"><div class="timeline">' + steps.map((st, i) => stepHtml(sc, st, i)).join("") + "</div>" +
+      '<div class="state-panel"><div class="sticky" id="statePanel"></div></div></div>';
+  } else h += '<div class="body empty">No steps recorded.</div>';
+  h += "</div>";
+  const tr = TR[sc.id];
+  if (tr) h += traceCard(tr, sc);
+  if (sc.harness) h += '<p class="muted" style="font-size:12.5px">Harness: <code>' + esc(sc.harness) + "</code>" + (sc.trace ? " · trace: <code>" + esc(sc.trace) + "</code>" : "") + "</p>";
+  return h;
+}
+function stepHtml(sc, st, i) {
+  let h = '<div class="step k-' + esc(st.kind) + '" data-step="' + (i + 1) + '" id="step-' + (i + 1) + '"><div class="num">' + (i + 1) + '</div><div class="sb"><div class="sh"><span class="kind">' +
+    esc(kindLabel(st.kind)) + "</span><b>" + esc(st.title) + "</b>" + (st.symbol ? ' <span class="muted" style="font-family:var(--mono);font-size:12px">' + esc(st.symbol) + "</span>" : "") +
+    '<span class="spacer"></span>' + locLink(st.file, st.line, st.end_line) + "</div>";
+  if (st.detail) h += '<div class="detail">' + md(st.detail) + "</div>";
+  if ((st.changes || []).length) h += '<table class="changes"><tbody>' + st.changes.map(c => '<tr><td class="p">' + esc(c.path) + '</td><td class="op">' + esc(c.op || "set") +
+    "</td><td>" + (c.op === "create" || c.op === "read" || c.before === undefined ? "" : '<span class="before">' + val(c.before) + '</span><span class="arrow">→</span>') +
+    (c.op === "delete" || c.op === "remove" ? '<span class="muted">(removed)</span>' : '<span class="after">' + val(c.after) + "</span>") +
+    (c.note ? '<div class="muted" style="font-family:var(--sans)">' + inline(c.note) + "</div>" : "") + "</td></tr>").join("") + "</tbody></table>";
+  if (st.db) h += '<div class="box db"><div class="h">Database · ' + esc(st.db.op || "") + (st.db.table ? " " + esc(st.db.table) : "") + "</div>" +
+    (st.db.sql ? '<pre><code class="language-sql">' + esc(st.db.sql) + "</code></pre>" : "") +
+    (st.db.rows !== undefined ? '<div class="muted">rows: ' + val(st.db.rows) + "</div>" : "") + (st.db.result !== undefined ? "<div>result: " + val(st.db.result) + "</div>" : "") + "</div>";
+  if (st.external) { const x = st.external; h += '<div class="box ext"><div class="h">External · ' + esc(x.service || "") + "</div><code>" + esc((x.method || "") + " " + (x.url || "")) + "</code>" +
+    (x.status != null ? " → <b>" + esc(x.status) + "</b>" : "") + (x.request !== undefined ? "<div class=muted>request</div>" + jsonHtml(x.request) : "") +
+    (x.response !== undefined ? "<div class=muted>response</div>" + jsonHtml(x.response) : "") + "</div>"; }
+  if (st.state) h += '<div class="box state"><div class="h">State · ' + esc(st.state.entity || "") + '</div><span class="before">' + val(st.state.from) +
+    '</span><span class="arrow">→</span><span class="after">' + val(st.state.to) + "</span></div>";
+  if (st.flag) h += '<div class="flag ' + esc(st.flag.severity || "note") + '">' + (st.flag.severity === "bug" ? "🐞 " : st.flag.severity === "risk" ? "⚠️ " : "ℹ️ ") +
+    inline(st.flag.text || "") + (st.flag.bug ? ' <a href="#bug/' + esc(st.flag.bug) + '">' + esc(st.flag.bug) + "</a>" : "") + "</div>";
+  return h + "</div></div>";
+}
+function setStep(n, scroll) {
+  const steps = document.querySelectorAll(".step");
+  if (!steps.length) return;
+  curStep = Math.max(1, Math.min(steps.length, n));
+  steps.forEach(el => { const k = +el.dataset.step; el.classList.toggle("cur", k === curStep); el.classList.toggle("future", k > curStep); });
+  const r = $("#stepRange"); if (r) r.value = curStep;
+  const lbl = $("#stepLbl"); if (lbl) lbl.textContent = "Step " + curStep + " of " + steps.length;
+  renderState();
+  if (scroll !== false) { const el = document.getElementById("step-" + curStep); if (el) el.scrollIntoView({block: "nearest", behavior: "smooth"}); }
+  if (route.view === "sc") history.replaceState(null, "", "#sc/" + route.id + "/" + curStep);
+  if ($("#drawer").classList.contains("open")) openCurrentStepCode();
+}
+function renderState() {
+  const p = $("#statePanel"); if (!p) return;
+  const snap = SNAPS[curStep - 1];
+  if (!snap || !snap.map.size) { p.innerHTML = '<div class="body empty" style="padding:14px">No data has changed yet at this step.</div>'; return; }
+  p.innerHTML = '<table class="t"><thead><tr><th>Data after step ' + curStep + '</th><th>Value</th><th>Set at</th></tr></thead><tbody>' +
+    [...snap.map.entries()].map(([k, x]) => '<tr class="' + (snap.changed.has(k) ? "changed " : "") + (x.removed ? "removed" : "") + '"><td>' + esc(k) +
+      '</td><td class="v">' + val(x.v) + '</td><td class="by"><a href="#" data-goto-step="' + x.by + '">step ' + x.by + "</a></td></tr>").join("") + "</tbody></table>";
+}
+function traceCard(tr, sc) {
+  const rows = tr.events.map(e => {
+    let what = "";
+    if (e.ev === "call") what = "→ " + esc(e.fn) + "(" + Object.entries(e.args || {}).map(([k, v]) => esc(k) + "=" + esc(String(v).slice(0, 60))).join(", ") + ")";
+    else if (e.ev === "return") what = "← " + esc(e.fn) + " returned " + esc(String(e.value).slice(0, 140));
+    else if (e.ev === "line") what = Object.entries(e.changes || {}).map(([k, v]) => "<b>" + esc(k) + '</b>: <span class="before">' + esc(String(v[0] == null ? "∅" : v[0]).slice(0, 80)) +
+      '</span> → <span class="after">' + esc(String(v[1]).slice(0, 120)) + "</span>").join("<br>");
+    else if (e.ev === "sql") what = esc(e.sql) + (e.params ? ' <span class="muted">' + esc(e.params) + "</span>" : "");
+    else if (e.ev === "http") what = esc(e.method + " " + e.url) + (e.status ? " → " + esc(e.status) : "") + (e.error ? " ✗ " + esc(e.error) : "");
+    else if (e.ev === "exception") what = esc(e.type + ": " + e.message) + (e.origin === "library" ? ' <span class="muted">(library)</span>' : "");
+    return '<tr class="ev-row ev-' + esc(e.ev) + '"><td class="muted">' + e.i + '</td><td class="e">' + esc(e.ev) + "</td><td>" + locLink(e.file, e.line) +
+      '</td><td style="padding-left:' + (8 + 12 * Math.max(0, (e.depth || 1) - 1)) + 'px">' + what + "</td></tr>";
+  }).join("");
+  return '<div class="card"><header><h2>Recorded trace</h2><span class="tag">' + esc(tr.tool) + "</span><span class=muted>" + tr.events.length + " of " + tr.total_events +
+    " events · " + esc(tr.status) + (tr.duration_ms != null ? " · " + Math.round(tr.duration_ms) + " ms" : "") + (tr.truncated ? " · truncated" : "") +
+    '</span></header><div class="body flush"><details' + (["fail", "bug", "reproduced"].includes(sc.status) ? " open" : "") +
+    ' style="padding:8px 12px"><summary>Every call, data change, SQL statement, HTTP call and exception recorded while the scenario ran</summary>' +
+    '<div style="max-height:520px;overflow:auto;margin-top:8px"><table class="t"><thead><tr><th>#</th><th>event</th><th>where</th><th>what</th></tr></thead><tbody>' + rows +
+    "</tbody></table></div></details></div></div>";
+}
+
+/* ---------- flow ---------- */
+const PC = {pass: "var(--ok)", fail: "var(--bad)", bug: "var(--bad)", risk: "var(--warn)", expected_error: "var(--info)", reproduced: "#7048e8", inconclusive: "var(--gray)"};
+function viewFlow() {
+  let h = '<h1 class="page">Flow map</h1><p class="sub">Every step of the flow (rows) and the scenarios that pass through it (columns). Click a dot to jump to that step.</p>';
+  if (S.how_it_works) h += '<div class="card"><header><h2>How it works</h2></header><div class="body">' + md(S.how_it_works) + "</div></div>";
+  if (NODES.length) {
+    h += '<div class="card"><div class="body flush matrix"><table><thead><tr><th>Node</th><th>Where</th>' + SCS.map(s => '<th class="scol" data-sc="' + esc(s.id) +
+      '" title="' + esc(s.title) + '" style="color:' + PC[s.status] + '">' + esc(s.id) + "</th>").join("") + "</tr></thead><tbody>" +
+      NODES.map(n => "<tr><td class=node><span class=\"kind k-" + esc(n.kind) + '">' + esc(kindLabel(n.kind)) + "</span> <b>" + esc(n.label || n.id) + "</b> <span class=muted><code>" + esc(n.id) + "</code></span>" +
+        (n.description ? '<div class="muted" style="font-size:12.5px">' + inline(n.description) + "</div>" : "") + "</td><td>" + locLink(n.file, n.line, n.end_line) + "</td>" +
+        SCS.map(s => { const idx = (s.steps || []).findIndex(st => st.node === n.id); const on = (s.path || []).includes(n.id) || idx >= 0;
+          return '<td class="cell' + (on ? " on" : "") + '" style="--pc:' + PC[s.status] + '">' + (on ? '<span class="pd" title="' + esc(s.id + ": " + s.title) + '" data-jump="' + esc(s.id) + "/" + (idx + 1 || 1) + '"></span>' : "") + "</td>"; }).join("") + "</tr>").join("") +
+      "</tbody></table></div></div>";
+  }
+  if (CONDS.length) {
+    h += '<div class="card"><header><h2>Conditions × scenarios</h2><span class="muted">which branch each input takes</span></header><div class="body flush matrix"><table><thead><tr><th>Condition</th><th>Where</th>' +
+      SCS.map(s => '<th class="scol" data-sc="' + esc(s.id) + '" title="' + esc(s.title) + '" style="color:' + PC[s.status] + '">' + esc(s.id) + "</th>").join("") + "</tr></thead><tbody>" +
+      CONDS.map(c => "<tr><td class=node><code>" + esc(c.id) + "</code> <code>" + esc(c.expression || "") + "</code>" + (c.description ? '<div class="muted" style="font-size:12.5px">' + inline(c.description) + "</div>" : "") +
+        "</td><td>" + locLink(c.file, c.line) + "</td>" + SCS.map(s => { const d = (s.decisions || []).find(x => x.condition === c.id);
+          return '<td class="cell tv-cell ' + (d ? "tv-" + d.value : "") + '">' + (d ? esc(d.value === true ? "T" : d.value === false ? "F" : String(d.value)) : '<span class="muted">·</span>') + "</td>"; }).join("") + "</tr>").join("") +
+      "</tbody></table></div></div>";
+  }
+  const edges = (INV.flow || {}).edges || [];
+  if (edges.length) h += '<div class="card"><header><h2>Transitions</h2></header><div class="body"><ul class="ref-list">' + edges.map(e => {
+    const a = NODES.find(n => n.id === e.from) || {}, b = NODES.find(n => n.id === e.to) || {};
+    return "<li><b>" + esc(a.label || e.from) + "</b> → <b>" + esc(b.label || e.to) + "</b>" + (e.label ? ' <span class="muted">' + esc(e.label) + "</span>" : "") + "</li>"; }).join("") + "</ul></div></div>";
+  if (!NODES.length && !CONDS.length) h += '<p class="empty">No flow nodes or conditions were recorded.</p>';
+  return h;
+}
+
+/* ---------- bugs ---------- */
+function viewBugs() {
+  if (!BUGS.length) return '<h1 class="page">Bugs</h1><p class="empty">No bugs found.</p>';
+  return '<h1 class="page">Bugs</h1>' + BUGS.map(b => {
+    const fix = b.fix || {};
+    return '<div class="card bugcard ' + esc(b.severity) + '" id="bug-' + esc(b.id) + '"><header><span class="sev sev-' + esc(b.severity) + '">' + esc(b.severity) + "</span><h2>" +
+      esc(b.title) + "</h2><code class=muted>" + esc(b.id) + '</code><span class="spacer"></span>' + locLink(b.file, b.line, b.end_line) + '</header><div class="body">' +
+      md(b.description) + (b.root_cause ? "<h3>Root cause</h3>" + md(b.root_cause) : "") +
+      ((b.scenarios || []).length ? "<h3>Seen in</h3>" + b.scenarios.map(s => { const x = SCS.find(y => y.id === s) || {}; const k = (x.steps || []).findIndex(st => (st.flag || {}).bug === b.id);
+        return '<a class="tag" style="margin-right:6px" href="#sc/' + esc(s) + (k >= 0 ? "/" + (k + 1) : "") + '">' + esc(s) + " · " + esc(x.title || "") + "</a>"; }).join("") : "") +
+      (fix.description ? '<h3>Fix</h3><div class="fix">' + md(fix.description) + (fix.code ? '<pre><code class="language-' + esc(fix.language || "plaintext") + '">' + esc(fix.code) + "</code></pre>" : "") + "</div>" : "") +
+      (b.confidence ? '<p class="muted" style="font-size:12.5px">Confidence: ' + esc(b.confidence) + "</p>" : "") +
+      ((b.references || []).length ? "<h3>References</h3>" + refList(b.references) : "") + "</div></div>";
+  }).join("");
+}
+
+/* ---------- reproduction ---------- */
+function viewRepro() {
+  const r = REP || {};
+  const err = r.error || (ST && ST.error) || {};
+  let h = '<h1 class="page">Reproduction ' + (r.confirmed ? '<span class="st st-reproduced">confirmed by a run</span>' : REP ? '<span class="st st-inconclusive">simulated</span>' : "") + "</h1>";
+  if (err.type || err.message) h += '<div class="flag bug" style="font-size:14px"><b>' + esc(err.type || "Error") + "</b>: " + esc(err.message || "") + "</div>";
+  if (r.scenario) h += '<p>Reproduced by <a href="#sc/' + esc(r.scenario) + (r.failing_step ? "/" + r.failing_step : "") + '"><code>' + esc(r.scenario) + "</code>" +
+    (r.failing_step ? " — fails at step " + esc(r.failing_step) : "") + "</a>.</p>";
+  if (r.root_cause) h += '<div class="card"><header><h2>Root cause</h2></header><div class="body">' + md(r.root_cause) + "</div></div>";
+  if ((r.steps_to_reproduce || []).length) h += '<div class="card"><header><h2>Steps to reproduce</h2></header><div class="body"><ol class="ref-list">' + r.steps_to_reproduce.map(x => "<li>" + inline(x) + "</li>").join("") + "</ol></div></div>";
+  if (r.how) h += '<div class="card"><header><h2>How it was reproduced</h2></header><div class="body">' + md(r.how) + "</div></div>";
+  const frames = (r.frames && r.frames.length ? r.frames : (ST ? ST.frames : [])) || [];
+  if (frames.length) h += '<div class="card"><header><h2>Stack frames</h2><span class="muted">innermost first · bold = this repo</span></header><div class="body flush"><table class="t frames"><thead><tr><th>#</th><th>Where</th><th>Function</th><th>Scenario step</th></tr></thead><tbody>' +
+    frames.map(f => { const app = f.app !== undefined ? f.app : !!f.path; return '<tr class="' + (app ? "" : "lib") + '"><td>' + esc(f.n) + '</td><td class="' + (app ? "app" : "") + '">' +
+      (f.path ? locLink(f.path, f.line) : "<code>" + esc((f.file || "") + ":" + (f.line || "")) + "</code>") + "</td><td><code>" + esc(f.fn || "") + "</code></td><td>" +
+      (f.step ? '<a href="#sc/' + esc(String(f.step).replace(":", "/")) + '">' + esc(f.step) + "</a>" : "") + "</td></tr>"; }).join("") + "</tbody></table></div></div>";
+  if (ST && ST.raw) h += '<div class="card"><div class="body"><details><summary>Original stack trace</summary><pre class="json" style="max-height:480px">' + esc(ST.raw) + "</pre></details></div></div>";
+  return h;
+}
+function viewSources() {
+  const c = (D.context || {}).sources || [];
+  return '<h1 class="page">Context sources</h1><p class="sub">Bug reports, repro instructions, specs and links supplied with the investigation.</p><div class="card"><div class="body flush"><table class="t"><tbody>' +
+    c.map(s => "<tr><td><code>" + esc(s.id) + "</code></td><td><span class=tag>" + esc(s.type) + "</span></td><td>" +
+      (s.url ? '<a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.title || s.url) + "</a>" : s.path ? '<a href="' + esc(s.path) + '" target="_blank">' + esc(s.title || s.path) + "</a>" : esc(s.title || "")) +
+      (s.type === "image" && s.path ? '<div><img src="' + esc(s.path) + '" alt="" style="max-width:320px;max-height:200px;border:1px solid var(--border);border-radius:6px;margin-top:6px"></div>' : "") +
+      "</td></tr>").join("") + "</tbody></table></div></div>";
+}
+
+/* ---------- code drawer ---------- */
+const EXT_LANG = {rb: "ruby", py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", ts: "typescript", tsx: "typescript",
+  go: "go", java: "java", kt: "kotlin", php: "php", cs: "csharp", rs: "rust", sql: "sql", erb: "erb", yml: "yaml", yaml: "yaml", json: "json", ex: "elixir", exs: "elixir", scala: "scala", swift: "swift", vue: "xml", html: "xml"};
+function openCode(file, line, end) {
+  const src = SRC[file];
+  $("#dPath").textContent = file + (line ? ":" + line + (end && end != line ? "-" + end : "") : "");
+  const code = $("#dCode");
+  if (!src) { code.innerHTML = '<p class="empty" style="padding:14px">Source not embedded for ' + esc(file) + ".</p>"; $("#drawer").classList.add("open"); return; }
+  const lang = EXT_LANG[(file.split(".").pop() || "").toLowerCase()];
+  const sc = route.view === "sc" ? SCS.find(s => s.id === route.id) : null;
+  const marks = {}, ran = new Set();
+  if (sc) {
+    (sc.steps || []).forEach((st, i) => { if (st.file === file && st.line) (marks[st.line] = marks[st.line] || []).push({n: i + 1}); });
+    const tr = TR[sc.id]; if (tr) tr.events.forEach(e => { if (e.file === file && e.line) ran.add(e.line); });
+  }
+  BUGS.forEach(b => { if (b.file === file && b.line) (marks[b.line] = marks[b.line] || []).push({bug: b.id}); });
+  const lo = +line || 0, hi = +(end || line) || lo;
+  code.innerHTML = src.lines.map((t, i) => {
+    const n = src.start + i;
+    let html;
+    try { html = lang && window.hljs && hljs.getLanguage(lang) ? hljs.highlight(t, {language: lang, ignoreIllegals: true}).value : esc(t); } catch (e) { html = esc(t); }
+    return '<div class="cl' + (n >= lo && n <= hi && lo ? " hit" : "") + (ran.has(n) ? " ran" : "") + '" id="L' + n + '"><span class="ln">' + n + '</span><span class="mk">' +
+      (marks[n] || []).map(m => m.bug ? '<span class="bugm" data-bugm="' + esc(m.bug) + '">' + esc(m.bug) + "</span>" : '<span data-goto-step="' + m.n + '">' + m.n + "</span>").join("") +
+      '</span><span class="src">' + (html || " ") + "</span></div>";
+  }).join("") + (src.start + src.lines.length - 1 < src.total ? '<p class="muted" style="padding:8px 14px">… file continues (' + src.total + " lines)</p>" : "");
+  $("#drawer").classList.add("open");
+  const el = document.getElementById("L" + (lo || src.start));
+  if (el) el.scrollIntoView({block: "center"});
+}
+function openCurrentStepCode() {
+  const sc = SCS.find(s => s.id === route.id); if (!sc) return;
+  const st = (sc.steps || [])[curStep - 1];
+  if (st && st.file) openCode(st.file, st.line, st.end_line);
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const loc = e.target.closest("[data-file]");
+  if (loc && loc.dataset.file) { e.preventDefault(); e.stopPropagation(); openCode(loc.dataset.file, loc.dataset.line, loc.dataset.end); return; }
+  const gs = e.target.closest("[data-goto-step]");
+  if (gs) { e.preventDefault(); setStep(+gs.dataset.gotoStep); return; }
+  const bm = e.target.closest("[data-bugm]");
+  if (bm) { go("#bug/" + bm.dataset.bugm); return; }
+  const jump = e.target.closest("[data-jump]");
+  if (jump) { go("#sc/" + jump.dataset.jump); return; }
+  const scEl = e.target.closest("[data-sc]");
+  if (scEl) { go("#sc/" + scEl.dataset.sc); return; }
+  const bug = e.target.closest("[data-bug]");
+  if (bug) { go("#bug/" + bug.dataset.bug); return; }
+  const chip = e.target.closest(".chip[data-st]");
+  if (chip) { const s = chip.dataset.st; FILTER.off.has(s) ? FILTER.off.delete(s) : FILTER.off.add(s); store.set("off", [...FILTER.off]); renderChips(); renderList(); return; }
+  const step = e.target.closest(".step");
+  if (step && !e.target.closest("a")) { setStep(+step.dataset.step, false); return; }
+  if (e.target.id === "prevStep") setStep(curStep - 1);
+  if (e.target.id === "nextStep") setStep(curStep + 1);
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "stepRange") setStep(+e.target.value);
+  if (e.target.id === "search") { FILTER.q = e.target.value; renderList(); }
+});
+$("#dClose").onclick = () => $("#drawer").classList.remove("open");
+$("#helpBtn").onclick = () => $("#help").classList.toggle("open");
+$("#help").onclick = e => { if (e.target.id === "help") $("#help").classList.remove("open"); };
+function applyTheme(t) {
+  if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+  const dark = t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  $("#hljs-light").disabled = dark; $("#hljs-dark").disabled = !dark;
+}
+applyTheme(store.get("theme", null));
+$("#themeBtn").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark"; store.set("theme", next); applyTheme(next);
+};
+function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+$("#copyMd").onclick = () => {
+  const txt = D.summary_md || "";
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Summary copied as Markdown"), () => {
+    const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("Summary copied as Markdown"); } catch (e) { toast("Copy failed"); } ta.remove(); });
+};
+document.addEventListener("keydown", e => {
+  if (e.target.matches("input, textarea") ) { if (e.key === "Escape") e.target.blur(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const vis = visibleScenarios();
+  const idx = route.view === "sc" ? vis.findIndex(s => s.id === route.id) : -1;
+  switch (e.key) {
+    case "j": if (route.view === "sc") setStep(curStep + 1); break;
+    case "k": if (route.view === "sc") setStep(curStep - 1); break;
+    case "]": if (vis.length) go("#sc/" + vis[Math.min(vis.length - 1, idx + 1)].id); break;
+    case "[": if (vis.length) go("#sc/" + vis[Math.max(0, idx - 1)].id); break;
+    case "o": go("#overview"); break;
+    case "f": go("#flow"); break;
+    case "b": go("#bugs"); break;
+    case "r": if (REP || ST) go("#repro"); break;
+    case "c": if (route.view === "sc") openCurrentStepCode(); break;
+    case "t": $("#themeBtn").click(); break;
+    case "/": e.preventDefault(); $("#search").focus(); break;
+    case "?": $("#help").classList.toggle("open"); break;
+    case "Escape": $("#drawer").classList.remove("open"); $("#help").classList.remove("open"); break;
+    default: return;
+  }
+});
+window.addEventListener("hashchange", onRoute);
+renderNav(); renderChips(); renderList(); onRoute();
+})();
+</script>
+</body>
+</html>

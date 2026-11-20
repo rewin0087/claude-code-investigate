@@ -1,0 +1,18 @@
+{
+  "name": "rewin0087-investigate",
+  "owner": {
+    "name": "rewin0087",
+    "url": "https://github.com/rewin0087"
+  },
+  "description": "Claude Code plugins by rewin0087",
+  "plugins": [
+    {
+      "name": "investigate",
+      "source": "./",
+      "description": "Trace and simulate data flow through your app; reproduce bugs and stack traces with an interactive report.",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": ["debugging", "data-flow", "simulation", "tracing", "stack-trace"]
+    }
+  ]
+}
