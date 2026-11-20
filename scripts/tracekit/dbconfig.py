@@ -3,7 +3,7 @@ import os
 import re
 import shutil
 
-SKIP = re.compile(r"(^|/)(node_modules|vendor|dist|build|\.venv|venv|tmp|coverage|\.git|\.investigate|\.code-review|public/assets|log)/")
+SKIP = re.compile(r"(^|/)(node_modules|vendor|dist|build|\.venv|venv|tmp|coverage|\.git|\.investigate|\.code-review|\.branch-review|public/assets|log)/")
 SECRET_KEY = re.compile(r"(pass(word)?|secret|token|key|credential|auth|private|dsn|url)", re.I)
 URL_CRED = re.compile(r"(\w+://[^:/@\s]+:)([^@\s]+)(@)")
 ENV_DB_KEY = re.compile(r"^\s*(?:export\s+)?([A-Z0-9_]*(?:DATABASE|DB_|POSTGRES|MYSQL|MONGO|REDIS|SQLITE)[A-Z0-9_]*)\s*=\s*(.*)$")

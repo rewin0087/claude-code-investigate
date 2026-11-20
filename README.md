@@ -419,7 +419,7 @@ Syntax highlighting loads highlight.js from cdnjs. Without internet the report s
 
 ## Related
 
-- [claude-code-review](https://github.com/rewin0087/claude-code-review): `/code-review`, AI code review of your branch's changes with an interactive HTML diff report.
+- [claude-code-review](https://github.com/rewin0087/claude-code-review): `/branch-review`, AI code review of your branch's changes with an interactive HTML diff report.
 
 ## Contributing
 

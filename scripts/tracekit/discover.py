@@ -44,7 +44,7 @@ CATEGORIES = [
      r"|prisma/\.env|jest\.config\.\w+|vitest\.config\.\w+|pytest\.ini|conftest\.py|\.rspec|spec/(rails|spec)_helper\.rb"
      r"|test/test_helper\.rb|phpunit\.xml(\.dist)?)$"),
 ]
-SKIP = re.compile(r"(^|/)(node_modules|vendor|dist|build|\.venv|venv|tmp|coverage|\.git|\.investigate|\.code-review|public/assets|log)/")
+SKIP = re.compile(r"(^|/)(node_modules|vendor|dist|build|\.venv|venv|tmp|coverage|\.git|\.investigate|\.code-review|\.branch-review|public/assets|log)/")
 CONSOLIDATED_SCHEMA = re.compile(r"(schema\.rb|structure\.sql|schema\.prisma|schema\.sql|\.dbml)$")
 JS_RUNNERS = (("Vitest", "npx vitest run <file>"), ("Jest", "npx jest <file> --runTestsByPath"), ("Mocha", "npx mocha <file>"))
 OTHER_RUNNERS = {

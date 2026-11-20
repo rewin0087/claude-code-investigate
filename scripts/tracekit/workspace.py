@@ -8,7 +8,7 @@ from .gitcmd import Git
 from .jsonio import load_json, write_json
 
 WALK_SKIP = {".git", "node_modules", "vendor", ".venv", "venv", "dist", "build", "tmp", "coverage", ".investigate",
-             ".code-review", "__pycache__", ".tox", ".next", "target"}
+             ".code-review", ".branch-review", "__pycache__", ".tox", ".next", "target"}
 SUBDIRS = ("harness", "trace", "data")
 
 
