@@ -2,12 +2,23 @@
   "name": "investigate",
   "displayName": "Investigate & Simulate",
   "version": "1.0.0",
-  "description": "Trace and simulate how data flows through your app, in any tech stack. From an endpoint, method, editor selection, bug report or stack trace, it maps input → validation → branches → DB → external calls → outcome, generates realistic inputs from schema/factories, runs scenarios with a runtime tracer, reproduces errors, pin-points bugs, and opens an interactive HTML data-timeline report.",
+  "description": "Trace and simulate how data flows through your app, in any tech stack. From an endpoint, method, editor selection, bug report or stack trace, it maps input \u2192 validation \u2192 branches \u2192 DB \u2192 external calls \u2192 outcome, generates realistic inputs from schema/factories, runs scenarios with a runtime tracer, reproduces errors, pin-points bugs, and opens an interactive HTML data-timeline report.",
   "author": {
     "name": "rewin0087",
     "url": "https://github.com/rewin0087"
   },
+  "homepage": "https://rewin0087.github.io/claude-code-investigate/",
   "repository": "https://github.com/rewin0087/claude-code-investigate",
   "license": "MIT",
-  "keywords": ["debugging", "data-flow", "simulation", "tracing", "stack-trace", "bug-reproduction", "claude-code", "skill", "developer-tools"]
+  "keywords": [
+    "debugging",
+    "data-flow",
+    "simulation",
+    "tracing",
+    "stack-trace",
+    "bug-reproduction",
+    "claude-code",
+    "skill",
+    "developer-tools"
+  ]
 }

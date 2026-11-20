@@ -7,14 +7,16 @@ Usage: dbquery.py (--url <postgres://..|mysql://..|sqlite:///path> | --url-env D
 Only single SELECT / WITH / EXPLAIN / SHOW / DESCRIBE / PRAGMA table_info statements run, only
 on localhost / sockets / sqlite files, inside a read-only session, with a LIMIT. Use the rows to
 shape realistic inputs; never copy real personal data into the report.
-Logic lives in tracekit.dbsafe; this file is only the CLI.
+Logic lives in tracekit.dbsafe / .dbrunner / .masking; this file is only the CLI.
 """
 import argparse
 import os
 import sys
 
 from tracekit import InvestigateError
-from tracekit.dbsafe import mask, parse_target, run_query, to_json
+from tracekit.dbrunner import QueryRunner
+from tracekit.dbsafe import DatabaseUrl
+from tracekit.masking import RowMasker
 
 
 def main(argv=None):
@@ -31,11 +33,12 @@ def main(argv=None):
     if a.url_env and not url:
         sys.exit("dbquery.py: environment variable %s is not set" % a.url_env)
     try:
-        cols, rows = run_query(parse_target(url, a.sqlite), a.sql, min(max(a.limit, 1), 200))
+        runner = QueryRunner.for_target(DatabaseUrl.parse(url, a.sqlite))
+        cols, rows = runner.query(a.sql, min(max(a.limit, 1), 200))
     except InvestigateError as e:
         sys.exit("dbquery.py: " + str(e))
-    rows = mask(cols, rows, a.keep_pii)
-    out = to_json(cols, rows)
+    rows = RowMasker(a.keep_pii).mask(cols, rows)
+    out = RowMasker.to_json(cols, rows)
     if a.save:
         os.makedirs(os.path.dirname(os.path.abspath(a.save)), exist_ok=True)
         with open(a.save, "w") as fh:

@@ -4,16 +4,15 @@
 Usage: discover.py --dir <OUT_DIR> [--focus "user session login"]
 
 Writes <OUT_DIR>/discovery.json and prints a digest. Nothing is executed.
-Logic lives in tracekit.discover; this file is only the CLI.
+Logic lives in tracekit.discover.AppDiscovery; this file is only the CLI.
 """
 import argparse
-import json
-import os
 import sys
 
 from tracekit import InvestigateError
-from tracekit.discover import discover, format_digest
-from tracekit.workspace import list_files, load_meta
+from tracekit.discover import AppDiscovery
+from tracekit.jsonio import write_json
+from tracekit.workspace import Workspace
 
 
 def main(argv=None):
@@ -22,15 +21,11 @@ def main(argv=None):
     ap.add_argument("--focus", help="words to rank matching files first (e.g. the model / feature names)")
     a = ap.parse_args(argv)
     try:
-        meta = load_meta(a.dir)
+        ws = Workspace.load(a.dir)
     except InvestigateError as e:
         sys.exit("discover.py: " + str(e))
-    repo = meta["repo"]
-    d = discover(repo, list_files(repo), a.focus)
-    path = os.path.abspath(os.path.join(a.dir, "discovery.json"))
-    with open(path, "w") as fh:
-        json.dump(d, fh, indent=1)
-    print(format_digest(d, path))
+    result = AppDiscovery(ws.repo, ws.files).run(a.focus)
+    print(AppDiscovery.digest(result, write_json(ws.path("discovery.json"), result)))
 
 
 if __name__ == "__main__":

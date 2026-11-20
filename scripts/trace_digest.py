@@ -5,13 +5,13 @@ Usage: trace_digest.py <trace.json> [--max-lines 400]
 
 Prints the call tree with the variables / attributes each line changed, SQL, HTTP calls,
 exceptions and return values, plus which lines ran in each file (to tell which branches ran).
-Logic lives in tracekit.tracedigest; this file is only the CLI.
+Logic lives in tracekit.tracelog (TraceLog, TraceDigest); this file is only the CLI.
 """
 import argparse
 import sys
 
 from tracekit import InvestigateError
-from tracekit.tracedigest import digest, load
+from tracekit.tracelog import TraceDigest, TraceLog
 
 
 def main(argv=None):
@@ -20,7 +20,7 @@ def main(argv=None):
     ap.add_argument("--max-lines", type=int, default=400)
     a = ap.parse_args(argv)
     try:
-        print(digest(load(a.trace), a.max_lines))
+        print(TraceDigest(TraceLog.load(a.trace), a.max_lines).format())
     except InvestigateError as e:
         sys.exit("trace_digest.py: " + str(e))
 

@@ -21,6 +21,10 @@
 # Options (env): TRACE_ROOT, TRACE_DIR, TRACE_OUT, TRACE_ENTRY ("Class#method": record only
 # while inside it), TRACE_FOCUS (comma-separated path fragments), TRACE_INCLUDE_TESTS=1,
 # TRACE_MAX_EVENTS (default 20000), TRACE_NO_MASK=1 (don't redact secret-looking values).
+#
+# Structure: AppFiles (which files are app code), ValueFormatter (safe inspect + snapshots),
+# Recorder (TracePoint callbacks + event log), NetHTTPHook (outgoing HTTP), and the
+# InvestigateTrace module functions start / stop / record / install_hooks.
 require "json"
 require "fileutils"
 
@@ -31,26 +35,16 @@ module InvestigateTrace
   LIB_PATH = %r{/(vendor|node_modules|tmp)/|/gems/|/rubygems/|/ruby/\d|/\.rbenv/|/\.rvm/|/\.asdf/|/bundler/}
   TEST_PATH = %r{(^|/)(spec|test)/|_spec\.rb$|_test\.rb$}
 
-  class Recorder
-    attr_reader :events
+  # Which files are app code (under TRACE_ROOT, not gems / vendor / tests) and their relative paths.
+  class AppFiles
+    attr_reader :root
 
-    def initialize(out)
-      @out = out
-      @root = File.expand_path(ENV["TRACE_ROOT"] || Dir.pwd)
+    def initialize(root, include_tests, focus)
+      @root = File.expand_path(root)
       @root = File.realpath(@root) rescue @root
-      @max = (ENV["TRACE_MAX_EVENTS"] || 20_000).to_i
-      @mask = ENV["TRACE_NO_MASK"] != "1"
-      @include_tests = ENV["TRACE_INCLUDE_TESTS"] == "1"
-      @focus = (ENV["TRACE_FOCUS"] || "").split(",").map(&:strip).reject(&:empty?)
-      @entry = ENV["TRACE_ENTRY"].to_s.strip
-      @active = @entry.empty?
-      @entry_depth = nil
-      @events = []
-      @stack = []
+      @include_tests = include_tests
+      @focus = focus
       @cache = {}
-      @truncated = false
-      @busy = false
-      @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     def app?(path)
@@ -68,6 +62,23 @@ module InvestigateTrace
 
     def rel(path)
       path.to_s.start_with?(@root + "/") ? path[(@root.length + 1)..-1] : path.to_s
+    end
+
+    # [file, line, label] of the first app location in a backtrace.
+    def caller_of(locations)
+      loc = locations.find { |l| app?(l.absolute_path || l.path) }
+      loc ? [rel(loc.absolute_path || loc.path), loc.lineno, loc.label] : [nil, nil, nil]
+    end
+  end
+
+  # Safe, redacted, size-limited inspect (never runs a query), and frame snapshots.
+  class ValueFormatter
+    def initialize(mask)
+      @mask = mask
+    end
+
+    def secret?(name)
+      @mask && name.to_s =~ SECRET_NAME ? true : false
     end
 
     def safe(name, value)
@@ -115,6 +126,27 @@ module InvestigateTrace
     rescue StandardError
       snap || {}
     end
+  end
+
+  # TracePoint callbacks: calls, per-line changes, returns, raises, SQL and HTTP events.
+  class Recorder
+    attr_reader :events
+
+    def initialize(out)
+      @out = out
+      @files = AppFiles.new(ENV["TRACE_ROOT"] || Dir.pwd, ENV["TRACE_INCLUDE_TESTS"] == "1",
+                            (ENV["TRACE_FOCUS"] || "").split(",").map(&:strip).reject(&:empty?))
+      @fmt = ValueFormatter.new(ENV["TRACE_NO_MASK"] != "1")
+      @max = (ENV["TRACE_MAX_EVENTS"] || 20_000).to_i
+      @entry = ENV["TRACE_ENTRY"].to_s.strip
+      @active = @entry.empty?
+      @entry_depth = nil
+      @events = []
+      @stack = []
+      @truncated = false
+      @busy = false
+      @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
 
     def emit(ev)
       return unless @active
@@ -136,8 +168,7 @@ module InvestigateTrace
     end
 
     def app_caller
-      loc = caller_locations(2, 80).find { |l| app?(l.absolute_path || l.path) }
-      loc ? [rel(loc.absolute_path || loc.path), loc.lineno, loc.label] : [nil, nil, nil]
+      @files.caller_of(caller_locations(2, 80))
     end
 
     def guard
@@ -149,22 +180,22 @@ module InvestigateTrace
     end
 
     def on_call(tp)
-      return unless app?(tp.path)
+      return unless @files.app?(tp.path)
       name = owner(tp)
       if !@active && @entry != "" && (name == @entry || name.end_with?(@entry) || tp.method_id.to_s == @entry)
         @active = true
         @entry_depth = @stack.size
       end
       b = tp.binding
-      snap = snapshot(b, tp.self)
+      snap = @fmt.snapshot(b, tp.self)
       params = (tp.defined_class.instance_method(tp.method_id).parameters.map { |_t, n| n.to_s } rescue [])
       args = snap.select { |k, _| params.include?(k) }
       @stack << { path: tp.path, mid: tp.method_id, line: nil, snap: snap }
-      emit("ev" => "call", "file" => rel(tp.path), "line" => tp.lineno, "fn" => name, "depth" => @stack.size, "args" => args)
+      emit("ev" => "call", "file" => @files.rel(tp.path), "line" => tp.lineno, "fn" => name, "depth" => @stack.size, "args" => args)
     end
 
     def on_line(tp)
-      return unless app?(tp.path)
+      return unless @files.app?(tp.path)
       top = @stack.last
       if top.nil? || top[:path] != tp.path || top[:mid] != tp.method_id
         found = @stack.rindex { |f| f[:path] == tp.path && f[:mid] == tp.method_id }
@@ -175,11 +206,11 @@ module InvestigateTrace
           @stack << top
         end
       end
-      new = snapshot(tp.binding, tp.self)
+      new = @fmt.snapshot(tp.binding, tp.self)
       if top[:line]
         changes = {}
         new.each { |k, v| changes[k] = [top[:snap][k], v] if top[:snap][k] != v }
-        ev = { "ev" => "line", "file" => rel(tp.path), "line" => top[:line], "fn" => tp.method_id.to_s, "depth" => @stack.size }
+        ev = { "ev" => "line", "file" => @files.rel(tp.path), "line" => top[:line], "fn" => tp.method_id.to_s, "depth" => @stack.size }
         ev["changes"] = changes unless changes.empty?
         emit(ev)
       end
@@ -188,22 +219,22 @@ module InvestigateTrace
     end
 
     def on_return(tp)
-      return unless app?(tp.path)
+      return unless @files.app?(tp.path)
       @stack.pop while @stack.last && @stack.last[:implicit] && !(@stack.last[:path] == tp.path && @stack.last[:mid] == tp.method_id)
       top = @stack.last
       if top && top[:path] == tp.path && top[:mid] == tp.method_id
-        new = snapshot(tp.binding, tp.self)
+        new = @fmt.snapshot(tp.binding, tp.self)
         changes = {}
         new.each { |k, v| changes[k] = [top[:snap][k], v] if top[:snap][k] != v }
         if top[:line]
-          ev = { "ev" => "line", "file" => rel(tp.path), "line" => top[:line], "fn" => tp.method_id.to_s, "depth" => @stack.size }
+          ev = { "ev" => "line", "file" => @files.rel(tp.path), "line" => top[:line], "fn" => tp.method_id.to_s, "depth" => @stack.size }
           ev["changes"] = changes unless changes.empty?
           emit(ev)
         end
         @stack.pop
       end
-      emit("ev" => "return", "file" => rel(tp.path), "line" => tp.lineno, "fn" => owner(tp), "depth" => @stack.size + 1,
-           "value" => safe(:return, tp.return_value))
+      emit("ev" => "return", "file" => @files.rel(tp.path), "line" => tp.lineno, "fn" => owner(tp), "depth" => @stack.size + 1,
+           "value" => @fmt.safe(:return, tp.return_value))
       if @entry_depth && @stack.size <= @entry_depth
         @active = false
         @entry_depth = nil
@@ -212,9 +243,9 @@ module InvestigateTrace
 
     def on_raise(tp)
       e = tp.raised_exception
-      path = app?(tp.path) ? tp.path : nil
+      path = @files.app?(tp.path) ? tp.path : nil
       origin = path ? "app" : "library"
-      file, line, fn = path ? [rel(path), tp.lineno, tp.method_id.to_s] : app_caller
+      file, line, fn = path ? [@files.rel(path), tp.lineno, tp.method_id.to_s] : app_caller
       return unless file
       # Library-internal raises while files load (require / autoload) are noise.
       return if origin == "library" && fn.to_s.start_with?("<")
@@ -222,7 +253,7 @@ module InvestigateTrace
       # The same failure re-raised / wrapped inside the library: keep the first one.
       return if origin == "library" && last && last["ev"] == "exception" && last["file"] == file && last["line"] == line
       emit("ev" => "exception", "file" => file, "line" => line, "fn" => fn, "depth" => @stack.size,
-           "origin" => origin, "type" => e.class.name, "message" => safe(:message, e.message.to_s).sub(/\A"/, "").sub(/"\z/, ""))
+           "origin" => origin, "type" => e.class.name, "message" => @fmt.safe(:message, e.message.to_s).sub(/\A"/, "").sub(/"\z/, ""))
     end
 
     def on_sql(payload)
@@ -234,10 +265,10 @@ module InvestigateTrace
       binds = (payload[:type_casted_binds] || []) rescue []
       binds = binds.call if binds.respond_to?(:call)
       keys = (payload[:binds] || []).map { |b| b.respond_to?(:name) ? b.name : nil } rescue []
-      shown = binds.each_with_index.map { |v, i| @mask && keys[i].to_s =~ SECRET_NAME ? "[redacted]" : v }
+      shown = binds.each_with_index.map { |v, i| @fmt.secret?(keys[i]) ? "[redacted]" : v }
       emit("ev" => "sql", "file" => file, "line" => line, "fn" => fn, "sql" => payload[:sql].to_s.strip[0, 2000],
            "op" => payload[:sql].to_s.strip.split(/\s+/).first.to_s.upcase, "name" => name,
-           "params" => shown.empty? ? nil : safe(:params, shown), "via" => "active_record")
+           "params" => shown.empty? ? nil : @fmt.safe(:params, shown), "via" => "active_record")
     end
 
     def on_http(http, req, res, error)
@@ -252,7 +283,7 @@ module InvestigateTrace
     end
 
     def write(status, error = nil)
-      data = { "tool" => "trace_rb", "version" => 1, "root" => @root, "status" => status,
+      data = { "tool" => "trace_rb", "version" => 1, "root" => @files.root, "status" => status,
                "duration_ms" => ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started) * 1000).round(1),
                "truncated" => @truncated, "events" => @events }
       data["error"] = error if error

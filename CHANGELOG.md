@@ -29,5 +29,10 @@ First public release.
   references and reproduction mapping.
 - Safety rails: no repo changes, execution in the test env only, read-only localhost DB access,
   and redaction of secrets and personal data.
+- Code organised as classes, one concern per module, in `scripts/tracekit/` (TargetResolver,
+  StackTraceParser, AppDiscovery, SqlGuard, QueryRunner, RowMasker, TraceLog, InvestigationValidator,
+  Renderer, …). The command-line scripts are thin wrappers, and the tracers are single-file classes.
+- README with workflow and sequence diagrams, and a GitHub Pages landing page (`docs/`) with SEO
+  metadata, a sitemap and a social preview image.
 
 [1.0.0]: https://github.com/rewin0087/claude-code-investigate/releases/tag/v1.0.0

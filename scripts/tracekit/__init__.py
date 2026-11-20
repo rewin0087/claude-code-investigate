@@ -1,18 +1,42 @@
-"""Business logic for the investigate skill.
+"""Business logic for the investigate skill, one concern per module (mostly one class each).
 
-The scripts in the parent directory are thin command-line wrappers around this package:
+The scripts in the parent directory are thin command-line wrappers around these classes:
 
-  gitcmd       running git, repo root, keeping output out of commits
-  target       resolving what to investigate (file:line, symbol, route, selection)
-  context      bug reports, repro steps, specs, images and links supplied by the user
-  stacktrace   parsing stack traces (7 languages) and mapping frames to repo lines
-  discover     stack, schema, factories/fixtures, routes, tests and DB config of the app
-  dbsafe       read-only, masked sample queries against a local/test database
-  tracedigest  turning raw runtime-tracer events into a compact per-line digest
-  model        investigation.json loading and validation
-  snippets     embedding the referenced source code in the report
-  summary      the markdown summary relayed in the chat
-  report       the self-contained interactive HTML report
+  Foundations
+    errors.py       InvestigateError: user-facing errors (CLIs print them without a traceback)
+    jsonio.py       load_json / write_json
+    gitcmd.py       Git: running git for one repository
+    sourcefile.py   SourceFile, SourceCache: repo files, snippets, enclosing definitions
+    workspace.py    Workspace: the repo + its .investigate/<slug>/ output folder and meta.json
+
+  Prepare (prepare.py)
+    preparer.py     Preparer: resolve targets, create the folder, collect context
+    target.py       TargetResolver: file:line / Class#method / "VERB /route" / text -> candidates
+    context.py      ContextCollector, SourceDocument: bug reports, specs, images, links
+
+  Stack traces (stacktrace.py)
+    stacktrace.py   StackTraceParser, FrameMapper, StackTraceDigest
+
+  Discovery (discover.py)
+    discover.py     AppDiscovery, FileCategorizer, TestRunnerFinder
+    stacks.py       StackDetector: languages + frameworks from manifests
+    dbconfig.py     DbConfigReader: database settings, credentials redacted
+
+  Local database samples (dbquery.py)
+    dbsafe.py       SqlGuard (read-only single statements + LIMIT), DatabaseUrl (local hosts only)
+    dbrunner.py     QueryRunner -> SqliteRunner, PostgresRunner, MysqlRunner (read-only sessions)
+    masking.py      RowMasker: secrets redacted, personal data masked
+
+  Runtime traces (trace_digest.py; the tracers themselves are standalone scripts)
+    tracelog.py     TraceLog (load, compact for the report), TraceDigest (readable timeline)
+
+  Render (render.py)
+    renderer.py     Renderer, RenderResult: validate + build report.html and summary.md
+    vocabulary.py   the enums of investigation.json
+    validator.py    InvestigationValidator
+    snippets.py     SnippetCollector: source code embedded in the report
+    summary.py      SummaryWriter: the markdown summary relayed in the chat
+    report.py       ReportBuilder: templates/report.html + embedded JSON
 """
 from .errors import InvestigateError
 

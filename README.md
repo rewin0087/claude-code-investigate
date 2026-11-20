@@ -1,155 +1,274 @@
 # claude-code-investigate: trace, simulate and debug data flow with Claude Code
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Claude Code skill](https://img.shields.io/badge/Claude%20Code-skill%20%2B%20plugin-7c5cff)](https://docs.claude.com/en/docs/claude-code/skills)
-![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776ab)
-![Any stack](https://img.shields.io/badge/stack-any-555)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-7c5cff)](https://github.com/rewin0087/claude-code-investigate#install)
+[![Version](https://img.shields.io/github/v/release/rewin0087/claude-code-investigate?sort=semver)](https://github.com/rewin0087/claude-code-investigate/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/docs-website-blue)](https://rewin0087.github.io/claude-code-investigate/)
 
-`/investigate` is a [Claude Code](https://claude.com/claude-code) skill. It follows your data
-through the app. Point it at an endpoint, a method, the code you highlighted, a bug report or a
-stack trace. It maps the flow from the **raw input** (an API or form request, or a method call)
-through validation, branches, business logic, **database CRUD**, **external API calls** and
-**state changes** to the **outcome**. On the way it records the **file, line and method where
-each value changes**.
+**`/investigate` is a debugging and data-flow simulation skill and plugin for [Claude Code](https://claude.com/claude-code).** Point it at an **endpoint**, a **method or class**, the **code you've highlighted**, a **bug report** or a **stack trace**, in **any tech stack**. It maps the flow from the raw input (an API or form request, or a method call) through **validation, branches, business logic, database CRUD, external API calls and state changes** to the **outcome**, and records the **file, line and method where each value changes**. It builds **realistic inputs** from your DB schema, factories and fixtures (or masked samples from your local DB), simulates **every path and edge case**, optionally **runs** them with a line-by-line runtime tracer in your test environment, **reproduces errors**, and **pin-points bugs** with fixes. It opens an **interactive HTML report**.
 
-It builds realistic inputs from your **DB schema, factories, fixtures** (or, if you allow it,
-your local DB). It covers every path: the happy path, each failure branch and the edge cases. It
-can **run** the scenarios in your test environment with a line-by-line runtime tracer,
-**reproduces** reported errors, **pin-points bugs** with fixes, and opens an interactive HTML
-report.
+It runs on your existing Claude Code session, in the terminal, VS Code or JetBrains. You don't need an API key, a server or extra packages.
 
-![Scenario data timeline](docs/images/report-scenario.png)
+![A scenario in the investigation report: the input, outcome and path decisions, then a step-by-step data timeline with every value before and after](docs/images/report-scenario.png)
 
-## What you get
+## Features
 
-- **Scenarios for every path**: "Sign in with valid credentials", "…with an invalid password",
-  "…when locked", "…with malformed JSON", and so on. Each has its input, path decisions and outcome,
-  and a status: pass, expected error, bug, risk or reproduced.
-- **A data timeline per scenario.** Each step shows *where* (file:line, method), *what* (parse,
-  validation, transform, DB read/write, external call, state change, response) and **every value
-  before → after**, with the SQL and HTTP calls. A state panel shows all the data at any step as
-  you scrub through.
-- **A flow map.** One matrix shows which scenarios pass through which nodes. A second shows which
-  way each condition went (`T` / `F`).
-- **A runtime tracer** (Python and Ruby, standard library only). It records calls and arguments,
-  every executed line and the locals, attributes or ActiveRecord fields it changed, SQL with
-  binds, outgoing HTTP, exceptions and return values. Executed lines are highlighted in the
-  code view.
-- **Stack trace reproduction.** It parses traces in Python, Ruby/Rails, JS/TS, Java/Kotlin, Go, PHP
-  and .NET, maps the frames to your files, starts at the deepest app frame, and builds a scenario
-  that reproduces the failure. That scenario points at the step where the bad value is
-  *created*, not only where it blows up.
-- **Bugs with root cause and fix.** Each gives the exact line, the value that makes it wrong, a
-  code fix, and references (docs, OWASP, CWE).
-- **Realistic test data** from the schema (types, NOT NULL, unique, FKs, enums), factories
-  (FactoryBot, factory_boy, Fishery…), fixtures, seeds, OpenAPI/GraphQL/DTO contracts, or masked
-  read-only samples from a local DB.
-- **Your own instructions**: bug reports, repro steps, expected behaviour, screenshots, ticket
-  links, or free text after `--`.
-- **Safe by default.** It never modifies your repo, executes only in the test environment, makes
-  no real outbound calls, reads the DB read-only on localhost only, and masks secrets and personal data.
+- **Input to outcome**: request parsing, strong params / DTOs, validations, callbacks, policies, services, ORM queries, transactions, external API clients, jobs, events and the response. Every step has a file, line and method.
+- **Every path as a named scenario**, such as "Sign in with valid credentials", "…with an invalid password", "…when the account is locked" or "…with malformed JSON". Each has its input, the branch it takes at every condition, and the outcome. Its status is pass, expected error, bug, risk or reproduced.
+- **Edge cases**: missing or wrong-typed fields, blank vs nil, boundaries, unicode and whitespace, duplicates, other tenants' records, permissions, concurrency, retries, and failing or timing-out external APIs.
+- **Data timeline**: each value **before → after** at every step, with the SQL issued and the HTTP calls made. A state panel shows all the data at any step as you scrub through the scenario.
+- **Realistic inputs**: built from the DB schema (types, NOT NULL, unique, foreign keys, enums), factories (FactoryBot, factory_boy, Fishery…), fixtures, seeds and API contracts (OpenAPI, GraphQL, DTOs, validators). With `--db`, it also uses masked read-only samples from your local DB.
+- **Runtime tracers** for Python and Ruby/Rails, standard library only. They record calls with their arguments, every executed line and the locals, attributes or ActiveRecord fields it changed, SQL with bind values, outgoing HTTP, exceptions and return values. For other stacks, Claude writes a throwaway test that logs data snapshots.
+- **Stack trace reproduction**: parses Python, Ruby/Rails, JS/TS, Java/Kotlin, Go, PHP and .NET traces, maps the frames to your files, and starts at the deepest app frame. It builds a scenario that reproduces the error and points at the step where the bad value is **created**, not just where it blows up.
+- **Pin-pointed bugs**: the exact line, the value that makes it wrong, the scenarios that show it, a concrete fix with code, and references (framework docs, OWASP, CWE).
+- **Your instructions**: bug reports, repro steps, expected behaviour, screenshots, ticket links, or free text after ` -- `.
+- **Highlight and go**: select a method or class in VS Code or JetBrains and run `/investigate`.
+- **Interactive report**: scenario list, data timeline with a state scrubber, flow and condition matrices, a code view that highlights the lines that actually ran, bugs, a reproduction view, keyboard navigation, dark mode, and Copy as Markdown.
+- **Results in the chat**: the verdict, a table of every scenario, the bugs, the reproduction, and a link to the report.
+- **Safe by default**: it never modifies your repo, executes only in the test environment, makes no real outbound calls, reads the DB read-only on localhost only, and masks secrets and personal data.
 
 ## Install
 
-**As a plugin (recommended)**
+### As a Claude Code plugin (recommended)
 
-```bash
-claude plugin marketplace add rewin0087/claude-code-investigate
-claude plugin install investigate@rewin0087-investigate
+In Claude Code (2.1.275 or later):
+
+```text
+/plugin install investigate --marketplace rewin0087/claude-code-investigate
 ```
 
-Then run `/investigate:investigate …`. Update with `claude plugin update investigate@rewin0087-investigate`.
+Or in two steps, which works on any version with plugins:
 
-**As a personal skill** (shows up as `/investigate` in every project)
-
-```bash
-git clone https://github.com/rewin0087/claude-code-investigate ~/.claude/skills/investigate
+```text
+/plugin marketplace add rewin0087/claude-code-investigate
+/plugin install investigate@rewin0087-investigate
 ```
 
-Requirements: Python 3.8+ (standard library only), git. Ruby 2.6+ only for the Ruby tracer.
+From a shell: `claude plugin marketplace add rewin0087/claude-code-investigate && claude plugin install investigate@rewin0087-investigate`.
+
+Claude Code namespaces plugin commands, so you run the plugin as **`/investigate:investigate`**. Update it with `claude plugin update investigate@rewin0087-investigate`.
+
+### As a standalone skill (plain `/investigate`)
+
+If you'd rather type `/investigate`, clone it as a skill. For every project:
+
+```bash
+git clone https://github.com/rewin0087/claude-code-investigate.git ~/.claude/skills/investigate
+```
+
+Or for one project only, clone it into `<repo>/.claude/skills/investigate`. Update with `git -C ~/.claude/skills/investigate pull`.
+
+**Requirements:** Python 3.8+ (standard library only) and git. The Ruby tracer needs Ruby 2.6+.
 
 ## Usage
 
 ```text
-/investigate "POST /users/sign_in"                         # an endpoint
-/investigate AuthService#sign_in                           # a method or class
-/investigate app/services/checkout.rb:40-90                # a line range
-/investigate                                               # the code highlighted in VS Code / JetBrains
-/investigate --trace crash.log                             # reproduce a stack trace
+/investigate "POST /users/sign_in"                   # an endpoint
+/investigate AuthService#sign_in                     # a method or class
+/investigate app/services/checkout.rb:40-90          # a line range
+/investigate                                         # the code highlighted in your editor
+/investigate --trace crash.log                       # reproduce a stack trace
 /investigate --bug JIRA-123.md -- locked users can still log in
-/investigate Orders::Checkout.call --run                   # execute scenarios with the tracer (test env)
-/investigate "POST /api/orders" --db --scenarios 12        # use masked local-DB samples for inputs
+/investigate Orders::Checkout.call --run             # run the scenarios with the tracer (test env)
+/investigate "POST /api/orders" --db --scenarios 12  # realistic inputs from masked local-DB rows
 /investigate refund flow --focus concurrency -- two refunds for the same order at once
 ```
 
 | Option | Meaning |
 |---|---|
-| target | `file[:a-b]`, `file#La-Lb`, `Class#method`, `"VERB /path"`, a job, event or mutation name, or words |
-| `--selection` / `--file` | use the editor selection / the open file (a selection is used automatically) |
-| `--trace <file\|text>` | stack trace or error log to reproduce (a trace pasted in the chat works too) |
-| `--bug`, `--context` `<file\|url\|text>` | bug report, repro steps, spec, screenshots, ticket links |
-| `-- text` | free-text instructions: how to reproduce, what to simulate, what "correct" means |
-| `--run` / `--static` | always execute in the test env / never execute (default: static, and it asks before running a reproduction) |
-| `--db [url]` | allow read-only, masked sample queries against a local dev/test DB |
-| `--scenarios N`, `--focus <area>` | how many scenarios, and what to emphasise |
+| target | `file`, `file:a-b`, `file#La-Lb`, `@file`, `Class#method`, `Mod::Class.method`, `"VERB /path"`, a job / event / mutation name, or plain words |
+| `--selection` / `--file` | the editor selection / the open file. A selection is used automatically when there's no other target |
+| `--trace <file\|text>` | a stack trace or error log to reproduce. A trace pasted in the chat works too |
+| `--bug`, `--context` `<file\|url\|text>` | a bug report, repro steps, spec, screenshots or ticket links (repeatable) |
+| `-- text` | free-text instructions: how to reproduce, what to simulate, which inputs to use, what "correct" means |
+| `--run` / `--static` | always execute in the test env / never execute. By default it simulates, and asks before running a reproduction |
+| `--db [url]` | allow read-only, masked sample queries against a local dev/test database |
+| `--scenarios N` | aim for about N scenarios |
+| `--focus <area>` | put more weight on an area (security, validation, payments, concurrency…) |
 | `--no-open` | don't open the browser |
 
-In the report: `j`/`k` move between steps, `[`/`]` between scenarios, `c` opens the code, `o`/`f`/`b`/`r`
-switch views, `/` filters, and `t` changes the theme.
+### Reproduce a bug or a stack trace
+
+Give it the trace (`--trace`, or paste it), the bug report (`--bug`, a file, URL or text) and any instructions after ` -- `. It:
+
+1. maps the trace frames to your files, innermost first, and starts at the deepest frame in your code
+2. walks outward to find which input and which existing records reach the failing line
+3. builds a `reproduction` scenario, and runs it in the test environment when you allow it (`--run`)
+4. reports the root cause: the step where the bad value is **created**, not only where it raises
+
+### Investigate the code you've highlighted
+
+The VS Code and JetBrains extensions share your selection with Claude Code. Highlight a method or class and run `/investigate`; a selection becomes the target automatically. `/investigate --file` targets the whole open file.
+
+### Report keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `j` / `k` | next / previous step in the data timeline |
+| `]` / `[` | next / previous scenario |
+| `c` | open the code of the current step |
+| `o` / `f` / `b` / `r` | overview, flow map, bugs, reproduction |
+| `/` | filter scenarios |
+| `t` | toggle dark mode |
+| `Esc` | close the code view |
 
 ## How it works
 
+### Workflow: from input to outcome
+
 ```mermaid
-flowchart LR
-  subgraph IN[Input]
-    A1[Endpoint / method /<br/>editor selection]
-    A2[Stack trace]
-    A3[Bug report, repro steps,<br/>screenshots, links, text]
-  end
-  subgraph PREP[Prepare]
-    B1[prepare.py<br/>resolve target, context]
-    B2[stacktrace.py<br/>frames → repo lines]
-    B3[discover.py<br/>schema, factories, routes,<br/>tests, DB config]
-  end
-  subgraph AI[Claude]
-    C1[Map the flow<br/>nodes + conditions]
-    C2[Build inputs<br/>schema / factories / DB]
-    C3[Enumerate scenarios<br/>every branch + edge cases]
-    C4[Simulate step by step<br/>value before → after]
-  end
-  subgraph RUN[Execute - optional, test env]
-    D1[harness in .investigate/]
-    D2[trace_py.py / trace_rb.rb<br/>per-line data changes,<br/>SQL, HTTP, exceptions]
-    D3[trace_digest.py]
-  end
-  subgraph OUT[Outcome]
-    E1[investigation.json]
-    E2[render.py<br/>validate + report]
-    E3[Interactive HTML report]
-    E4[Summary in chat]
-  end
-  A1 --> B1
-  A3 --> B1
-  A2 --> B2
-  B1 --> B3 --> C1
-  B2 --> C1
-  C1 --> C2 --> C3 --> C4
-  C3 --> D1 --> D2 --> D3 --> C4
-  C4 --> E1 --> E2
-  E2 --> E3
-  E2 --> E4
-  E2 -. ACTION REQUIRED: missing edge cases,<br/>fix, reference, repro mapping .-> C3
+flowchart TD
+    subgraph IN["1 - Input"]
+        A1["Target<br/>endpoint, Class#method,<br/>file:lines, editor selection"]
+        A2["Stack trace<br/>--trace or pasted"]
+        A3["Bug report and instructions<br/>--bug, screenshots, links, -- text"]
+        A4["Flags<br/>--run, --db, --scenarios, --focus"]
+    end
+
+    subgraph PREP["2 - Prepare: deterministic scripts"]
+        B1["prepare.py<br/>resolve the target,<br/>create .investigate/slug/"]
+        B2["stacktrace.py<br/>frames to repo lines,<br/>deepest app frame"]
+        B3["discover.py<br/>stack, schema, factories,<br/>contracts, routes, tests, DB config"]
+        B4[("meta.json, context.json,<br/>stacktrace.json, discovery.json")]
+    end
+
+    subgraph AI["3 - Simulate: Claude Code"]
+        C1["Map the flow<br/>nodes and conditions,<br/>callbacks, jobs, error handlers"]
+        C2["Build inputs<br/>schema, factories, fixtures,<br/>contracts, masked DB rows"]
+        C3["Enumerate scenarios<br/>every branch outcome<br/>plus edge cases"]
+        C4["Walk each scenario<br/>value before and after,<br/>SQL, HTTP, state"]
+        C5["Reproduce<br/>the input that reaches<br/>the failing line"]
+        C6["Findings<br/>bugs, fixes, insights,<br/>web references"]
+        C7[("investigation.json")]
+    end
+
+    subgraph RUN["4 - Execute: optional, test env"]
+        D1["Harness in .investigate/<br/>records, input, entry call"]
+        D2["trace_py.py / trace_rb.rb<br/>per-line changes, SQL,<br/>HTTP, exceptions"]
+        D3["trace_digest.py<br/>readable timeline,<br/>lines that ran"]
+    end
+
+    subgraph RENDER["5 - Validate and render"]
+        E1{"Anchors, ids,<br/>edge cases, fixes,<br/>references OK?"}
+        E2["report.html<br/>interactive data timeline"]
+        E3["summary.md<br/>posted in the chat"]
+    end
+
+    A1 & A3 & A4 --> B1
+    A2 --> B2
+    B1 --> B3 --> B4
+    B2 --> B4
+    B4 --> C1 --> C2 --> C3 --> C4
+    C3 -. --run or approved .-> D1 --> D2 --> D3 --> C4
+    C4 --> C5 --> C6 --> C7
+    C7 --> E1
+    E1 -- "no: ACTION REQUIRED" --> C3
+    E1 -- yes --> E2 & E3
 ```
 
-| Stage | What happens |
+| Stage | Who does it | Output |
+|---|---|---|
+| **1. Input** | You: a target, a trace, a bug report, instructions, flags | what to investigate |
+| **2. Prepare** | `prepare.py`, `stacktrace.py`, `discover.py`: deterministic, no AI | `meta.json`, `context.json`, `stacktrace.json`, `discovery.json` |
+| **3. Simulate** | Claude Code, guided by `SKILL.md` | `investigation.json` |
+| **4. Execute** (optional) | your test runner + `trace_py.py` / `trace_rb.rb` | `trace/<scenario>.json` |
+| **5. Validate and render** | `render.py`: checks every file:line, id and reference | `report.html`, `summary.md` |
+
+The scripts handle the exact parts: which definition a symbol refers to, which repo line a stack frame is, what the schema and factories say, what the code actually did at runtime, and whether every file:line in the report exists. Claude does the reasoning: the flow, the scenarios, the root cause and the fix. `render.py` rejects any step that points at a line that doesn't exist. It warns when edge cases, fixes, references or the reproduction mapping are missing, and Claude fixes them before replying.
+
+### Step by step
+
+```mermaid
+sequenceDiagram
+    actor You
+    participant CC as Claude Code
+    participant S as Scripts
+    participant T as Test env + tracer
+    participant W as Web
+    participant R as HTML report
+
+    You->>CC: /investigate target [--trace] [--bug] [-- instructions]
+    CC->>S: prepare.py
+    S-->>CC: entry point candidates, context digest
+    opt stack trace given
+        CC->>S: stacktrace.py
+        S-->>CC: frames mapped to repo lines, START_AT
+    end
+    CC->>S: discover.py
+    S-->>CC: schema, factories, contracts, routes, tests, DB config
+    CC->>CC: map nodes and conditions, build inputs, enumerate scenarios
+    opt --db
+        CC->>S: dbquery.py (read-only, masked)
+        S-->>CC: sample rows
+    end
+    opt --run, or approved to confirm a reproduction
+        CC->>T: harness under trace_py.py / trace_rb.rb
+        T-->>CC: trace/SC1.json
+        CC->>S: trace_digest.py
+        S-->>CC: per-line changes, SQL, HTTP, exceptions
+    end
+    CC->>W: framework docs, OWASP / CWE, library issues
+    W-->>CC: references
+    CC->>CC: steps, outcomes, bugs, reproduction → investigation.json
+    CC->>S: render.py
+    S-->>R: report.html
+    S-->>CC: summary.md
+    CC-->>You: verdict, scenario table, bugs, link to the report
+    You->>R: scrub the timeline, open the code, copy as Markdown
+```
+
+### The result
+
+You get two outputs: a summary in the chat (below), and the interactive report in your browser.
+
+```text
+## Investigation: Sign-in: POST /sessions
+
+**🐞 Bug found** — Locked accounts can still sign in, and a non-string email crashes the endpoint with a 500
+Target: `POST /sessions → handle_sign_in → AuthService#sign_in` · Scenarios: 9 (2 executed with the tracer, 7 simulated)
+
+| #   | Scenario                                       | Outcome                         | Status            |
+| SC1 | Sign in with valid credentials                 | 200 {user_id, token}            | ✅ pass           |
+| SC3 | Third wrong password locks the account         | 401, account locked in the DB   | 🛑 expected_error |
+| SC4 | Locked user signs in with the correct password | 200 — signed in although locked | 🐞 bug            |
+| SC6 | Email sent as a number                         | 500 AttributeError              | 🎯 reproduced     |
+
+### Bugs
+1. **[major] Locked accounts can sign in** `app/auth.py:25`
+   Root cause: `locked_at` is written at app/auth.py:29 but never read.
+   Fix: Reject locked users before checking the password, and reset `failed_attempts` on success.
+
+### Reproduction
+Error: `AttributeError: 'int' object has no attribute 'strip'` · Confirmed by running it. Fails at SC6 step 2.
+
+Full report (data timeline per scenario, flow map, code): report.html
+```
+
+**Report layout**
+
+```text
++--------------------------------------------------------------------------------+
+| Sign-in: POST /sessions   [POST /sessions -> AuthService#sign_in]  [BUG FOUND] |
++-----------------------+--------------------------------------------------------+
+| Overview              | SC4  Locked user signs in with the correct password    |
+| Flow map      9 nodes | +- Input ----------------+ +- Outcome --------------+  |
+| Bugs                2 | | POST /sessions {...}   | | 200, but 403 expected  |  |
+| Reproduction          | +------------------------+ +------------------------+  |
+| [Filter scenarios...] | Path decisions: C3 user is None -> F  C5 pw ok -> F    |
+| (Pass) (Bug) (Repro)  | Data timeline  [<] ======o======== [>]  step 6 of 7    |
+|                       | (1) PARSE body.email        | Data after step 6        |
+| * SC1 Valid sign in   | (2) TRANSFORM email         |  email      ana@ex.com   |
+| * SC2 Unknown email   |     " Ana@Ex.com " -> "ana" |  user.locked_at  ...     |
+| * SC4 Locked user  <  | (4) AUTH  locked_at ignored |  user.sign_in_count 1    |
+| * SC6 Email number    |     BUG B1                  |  db.users  UPDATE        |
++-----------------------+--------------------------------------------------------+
+```
+
+| Overview | Flow map |
 |---|---|
-| Prepare | Finds the definition / route for the target, creates `.investigate/<slug>/` (git-ignored), and collects your bug report, images and links |
-| Stack trace | Parses the frames, maps them to repo files, and prints snippets from the deepest app frame outward |
-| Discover | Stack and frameworks, schema and migrations, models, factories, fixtures, contracts, routes, tests, test runner, tracer support, DB config (redacted) |
-| Map | Claude reads the code as the runtime would, including middleware, callbacks, validations, policies, jobs and error handlers |
-| Scenarios | One per branch outcome, plus edge cases: validation, auth, not-found, boundaries, unicode, duplicates, concurrency, external failures |
-| Execute | Optional. A throwaway harness runs in the test env under the tracer, and the scenario's steps come from the recorded trace |
-| Render | Validates every anchor and id, then warns about missing edge cases, fixes, references or reproduction mapping, and builds the report |
+| ![Overview: headline, scenario counts, how the flow works and the scenario table](docs/images/report-overview.png) | ![Flow map: which scenario passes through which node, and which way each condition went](docs/images/report-flow.png) |
+
+![Code view: the lines that ran in the trace are green, with step and bug markers](docs/images/report-code.png)
 
 ### Runtime tracers
 
@@ -158,18 +277,16 @@ flowchart LR
 .venv/bin/python scripts/trace_py.py --root . --out .investigate/x/trace/SC1.json --entry sign_in \
     -- -m pytest .investigate/x/harness/sim_sc1.py -q
 
-# Ruby / Rails: wrap exactly the scenario in a harness
+# Ruby / Rails: wrap exactly the scenario in a harness...
 require "/path/to/scripts/trace_rb.rb"
 InvestigateTrace.record("SC1") { post "/users/sign_in", params: { user: { email:, password: } } }
 
-# …or trace an existing spec as-is
+# ...or trace an existing spec as it is
 TRACE_AUTOSTART=1 TRACE_OUT=$PWD/.investigate/x/trace/SC1.json TRACE_ROOT=$PWD \
   RUBYOPT="-r/path/to/scripts/trace_rb.rb" RAILS_ENV=test bundle exec rspec spec/requests/sessions_spec.rb:12
 
 python3 scripts/trace_digest.py .investigate/x/trace/SC1.json
 ```
-
-Example digest:
 
 ```text
 #15  → AuthService.sign_in(email=' Ana@Example.com ', password='[redacted]')  [app/auth.py:18]
@@ -177,52 +294,74 @@ Example digest:
 #20      app/models.py:25  SQL SELECT … FROM users WHERE email = 'ana@example.com'
 #33      app/auth.py:20  user.failed_attempts: ∅ → 3; user.locked_at: ∅ → '2026-11-19T09:00:00'
 #40      app/auth.py:33  user.sign_in_count: 0 → 1
-#44      app/models.py:30  SQL UPDATE users SET failed_attempts = 3, locked_at = '…', sign_in_count = 1 WHERE id = 1
+#44      app/models.py:30  SQL UPDATE users SET failed_attempts = 3, … sign_in_count = 1 WHERE id = 1
 #58  ← handle_sign_in returned (200, {'user_id': 1, 'token': '[redacted]'})  [app/api.py:24]
-Executed lines: app/auth.py: 18-21,23,25,33-36     ← lines 26-31 (wrong-password branch) did not run
+Executed lines: app/auth.py: 18-21,23,25,33-36     ← 26-31 (the wrong-password branch) did not run
 ```
 
-For other stacks (JS/TS, Go, JVM, PHP, .NET), Claude writes a harness test that logs data
-snapshots between stages and runs it with your test runner. Otherwise it simulates statically.
+### Safety
 
-### Screenshots
+- It writes only to `<repo>/.investigate/`, which is added to `.git/info/exclude`. Your files are never changed.
+- It executes only through your test runner in the test environment, where tests run in rolled-back transactions. It asks first unless you passed `--run`.
+- External APIs are stubbed with your tools (WebMock/VCR, responses, nock/MSW…). If they can't be stubbed, that part is simulated.
+- `dbquery.py` runs one read statement only, against localhost or a sqlite file, in a read-only session, with a LIMIT. Secret columns are redacted and personal data is masked.
+- The tracers redact password, secret, token and key-like values. The report uses synthetic identities.
 
-| Overview | Flow map |
-|---|---|
-| ![Overview](docs/images/report-overview.png) | ![Flow map](docs/images/report-flow.png) |
+### Files
 
-![Code view with executed lines, step markers and bug markers](docs/images/report-code.png)
-
-## Safety
-
-- Writes only to `<repo>/.investigate/` (added to `.git/info/exclude`). Repo files are never changed.
-- Executes only through your test runner in the test environment, where each test runs in a
-  rolled-back transaction. It asks before running anything unless you passed `--run`.
-- External APIs are stubbed with your tools (WebMock/VCR, responses, nock/MSW…). If they can't
-  be stubbed, that part is simulated.
-- `dbquery.py` allows a single read statement, on localhost or sqlite only, in a read-only
-  session, with a LIMIT, secret columns redacted and personal data masked.
-- The tracers redact password, secret, token and key-like values. Reports use synthetic
-  identities.
-
-## Files
-
-```text
-SKILL.md                        the workflow Claude follows
-references/investigation-schema.md
-scripts/
-  prepare.py   discover.py   stacktrace.py   dbquery.py   render.py      CLIs (thin wrappers)
-  trace_py.py  trace_rb.rb   trace_digest.py                             runtime tracers
-  tracekit/    target, context, stacktrace, discover, dbsafe, tracedigest, model, snippets, summary, report
-templates/report.html           the interactive report (self-contained, light/dark)
-.claude-plugin/                 plugin + marketplace manifests
 ```
+SKILL.md                         instructions Claude follows (targets, safety, scenarios, reproduction, output)
+references/investigation-schema.md   the investigation.json format Claude writes
+templates/report.html            the self-contained interactive report
+
+scripts/                         thin command-line entry points
+  prepare.py                     target + context -> .investigate/<slug>/ (meta.json, context.json)
+  stacktrace.py                  stack trace -> frames mapped to repo lines (stacktrace.json)
+  discover.py                    schema, factories, contracts, routes, tests, DB config (discovery.json)
+  dbquery.py                     read-only, masked sample rows from a local DB
+  trace_py.py                    Python runtime tracer (standalone: run with the project's interpreter)
+  trace_rb.rb                    Ruby / Rails runtime tracer (standalone: require it in a harness)
+  trace_digest.py                trace log -> readable per-line timeline
+  render.py                      investigation.json -> report.html + summary.md
+
+scripts/tracekit/                the logic, one concern per module (raises InvestigateError instead of exiting)
+  errors.py  jsonio.py           InvestigateError; load_json / write_json
+  gitcmd.py                      Git: running git for one repository
+  sourcefile.py                  SourceFile, SourceCache: lines, snippets, enclosing definitions
+  workspace.py                   Workspace: the repo + its output folder and meta.json
+  preparer.py                    Preparer: resolve targets, create the folder, collect context
+  target.py                      TargetResolver: file:line / Class#method / route / text -> candidates
+  context.py                     ContextCollector, SourceDocument: bug reports, specs, images, links
+  stacktrace.py                  StackTraceParser, FrameMapper, StackTraceDigest
+  discover.py                    AppDiscovery, FileCategorizer, TestRunnerFinder
+  stacks.py                      StackDetector: languages and frameworks from manifests
+  dbconfig.py                    DbConfigReader: DB settings, credentials redacted
+  dbsafe.py                      SqlGuard (single read statement + LIMIT), DatabaseUrl (local only)
+  dbrunner.py                    QueryRunner: SqliteRunner, PostgresRunner, MysqlRunner (read-only sessions)
+  masking.py                     RowMasker: secrets redacted, personal data masked
+  tracelog.py                    TraceLog (load, compact), TraceDigest (readable timeline)
+  renderer.py                    Renderer, RenderResult: validate + build the report and summary
+  vocabulary.py                  the enums of investigation.json
+  validator.py                   InvestigationValidator
+  snippets.py                    SnippetCollector: source code embedded in the report
+  summary.py                     SummaryWriter: the markdown summary posted in the chat
+  report.py                      ReportBuilder: template + embedded JSON
+```
+
+The tracers are classes too (`AppFiles`, `ValueFormatter`, `Snapshotter`, `EventLog`, `LibraryProbe`, `Recorder`, `TraceRunner` in Python, and the matching classes in Ruby). Each stays a single file, so it runs under your project's interpreter without installing anything.
+
+Syntax highlighting loads highlight.js from cdnjs. Without internet the report still works, just without colours.
 
 ## Related
 
-- [claude-code-review](https://github.com/rewin0087/claude-code-review): `/code-review`, an AI code
-  review of your branch's changes with an interactive HTML report.
+- [claude-code-review](https://github.com/rewin0087/claude-code-review): `/code-review`, AI code review of your branch's changes with an interactive HTML diff report.
+
+## Contributing
+
+Issues and pull requests are welcome. If `/investigate` helped you find a bug, a ⭐ on GitHub helps other developers find it.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
-MIT © rewin0087
+MIT
