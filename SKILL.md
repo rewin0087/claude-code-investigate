@@ -1,7 +1,7 @@
 ---
 name: investigate
-description: Investigate and simulate how data flows through an app, in any tech stack. Given an endpoint, method, class, editor selection, bug report or stack trace, it maps the flow from raw input (API/form request or call) through validation, branches, business logic, database CRUD, external API calls and state changes to the outcome, recording per line / method where the data changes. It generates realistic inputs from the DB schema, factories, fixtures or a local DB, enumerates scenarios (happy path, each failure branch, edge cases), optionally runs them with a runtime tracer in the test environment, reproduces errors, pin-points bugs, and opens an interactive HTML report with a step-by-step data timeline per scenario.
-argument-hint: "[target: file[:a-b] | Class#method | \"POST /path\" | text] [--trace <file|text>] [--bug <file|url|text>] [--context <file|url|text>] [--run|--static] [--db [url]] [--scenarios N] [--focus <area>] [--selection|--file] [--no-open] [-- instructions]"
+description: Investigate and simulate how data flows through an app, in any tech stack. Given an endpoint, method, class, editor selection, bug report or stack trace, it maps the flow from raw input (API/form request or call) through validation, branches, business logic, database CRUD, external API calls and state changes to the outcome, recording per line / method where the data changes. It generates realistic inputs from the DB schema, factories, fixtures or a local DB, replays bugs on the existing records the user names (Order#4512), enumerates scenarios (happy path, each failure branch, edge cases), optionally runs them with a runtime tracer in the test environment or against the local development database inside a rolled-back sandbox (following every DB read and write), reproduces errors, pin-points bugs, and opens an interactive HTML report with a step-by-step data timeline per scenario.
+argument-hint: "[target: file[:a-b] | Class#method | \"POST /path\" | text] [--trace <file|text>] [--bug <file|url|text>] [--context <file|url|text>] [--run|--static] [--env test|dev] [--record <Model#id|table:id|"table where ...">] [--db [url]] [--scenarios N] [--focus <area>] [--selection|--file] [--no-open] [-- instructions]"
 disable-model-invocation: true
 allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Bash(git grep *) Bash(git log *) Bash(git show *) Bash(git blame *) Bash(git ls-files *) Bash(git rev-parse *) Bash(git status *) Bash(git -C *) Bash(ls *) Read Grep Glob WebSearch WebFetch Agent Edit(**/.investigate/**)
 ---
@@ -37,6 +37,13 @@ returned, with the value before and after each change. Then find what breaks.
 - `--run` = execute scenarios in the **test** environment with the runtime tracer (Step 5b).
   `--static` = never execute anything. Default (**auto**): simulate statically. Execute only when a
   stack trace or bug must be reproduced **and** a test setup exists, and ask first (Step 5b).
+- `--env test|dev` = where executed scenarios run (Step 5b). `test` (default): the test environment
+  with factories/fixtures. `dev` (aliases `development`, `--dev`): the **local development**
+  environment and its real data, always inside a rolled-back sandbox (Step 5c). Saying "run it on
+  my dev data", "use the development database" or "replay it on order 4512" means `--env dev`.
+- `--record <ref>` (repeatable) = existing records the bug affected, to inspect and replay:
+  `Order#4512`, `orders:4512`, `"users where email = 'ana@example.com'"`. Records mentioned in words
+  ("order 4512", "the invoice INV-88 for account 12", "user ana@…") count too. Implies `--db` (Step 4b).
 - `--db [url]` = you may read sample rows from the **local** dev/test database, read-only (Step 4).
   Without it, inputs come from the schema, factories, fixtures and seeds only.
 - `--scenarios N` = aim for about N scenarios (default: as many as the branches need, usually 6–15).
@@ -50,14 +57,19 @@ and offer the likely entry points you can see (routes, controllers, recently cha
 
 - **Never modify the repo.** Harnesses, scratch scripts, traces and data go in `<OUT_DIR>`
   (`<repo>/.investigate/<slug>/`, kept out of git through `.git/info/exclude`).
-- **Execute only in a test environment** (`RAILS_ENV=test`, `NODE_ENV=test`, `APP_ENV=testing`,
-  Django test runner / pytest DB fixtures). Never against development, staging or production
-  data, and never with production credentials. Prefer the project's test runner: it wraps each
-  test in a rolled-back transaction.
-- **No real outbound calls.** Stub external APIs with the project's tools (WebMock/VCR, responses,
-  nock/MSW, httpmock…). If you can't stub them, simulate that part statically and say so.
-- **Database reads** go through `dbquery.py` only (local host, read-only session, LIMIT, masking).
-  Never write to a database outside a test transaction.
+- **Execute only in the test environment, or the LOCAL development environment inside a sandbox.**
+  Test: `RAILS_ENV=test`, `NODE_ENV=test`, `APP_ENV=testing`, the Django test runner / pytest DB
+  fixtures (each test runs in a rolled-back transaction). Development: only with `--env dev`, only
+  against a database on localhost / a unix socket / a sqlite file, and only inside
+  `InvestigateTrace.sandbox` / `investigate_trace.sandbox`, which rolls everything back. Never
+  staging or production, never production credentials, never a remote database host.
+- **No real outbound calls.** The tracers block outbound connections to anything but loopback.
+  Stub external APIs with the project's tools (WebMock/VCR, responses, nock/MSW, httpmock…). If you
+  can't stub them, simulate that part statically and say so.
+- **Database reads** go through `dbquery.py` / `records.py` only (local host, read-only session,
+  LIMIT, masking). Writes happen only inside a test transaction or a dev sandbox. If a sandbox
+  reports COMMITs (the code committed on its own), tell the user exactly which rows changed in
+  their dev DB.
 - **Personal data and secrets** never reach the report. Use synthetic values (`ana@example.com`,
   `[valid password]`) and keep masked values masked.
 
@@ -139,6 +151,29 @@ For each scenario, build an input that the real app would accept (or deliberatel
   masked; still never copy personal data into scenarios.
 - Record where each input came from in `data_sources`.
 
+**4b — Reference data: the records the bug affected** (`--record`, or records named in the
+request / bug report). Fetch each record and its neighbourhood from the local dev (or test) DB:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/records.py --url-env DATABASE_URL \
+    --record Order#4512 [--record "users where email = 'ana@example.com'"] [--depth 1] \
+    --save <OUT_DIR>/data/<name>.json
+```
+
+Build the URL from discovery's DB config for the environment you're replaying, e.g.
+`--url postgres://localhost/myapp_development` (credentials from the environment, never typed into
+the report) or `--sqlite db/development.sqlite3`. Ask the user if the config isn't clear.
+It follows declared foreign keys and Rails-style `*_id` columns to parents (what the record points
+at) and children (what points at it), read-only and masked. Read the rows the way the code will:
+which values make this record take an unusual path (a NULL where the code expects a value, a
+status the state machine doesn't handle, an amount already at its limit, an orphaned child, a
+duplicate). Add each one to `reference_data` (`name`, `ref`, `source`, `path`, `note`), and link
+the scenarios that replay it with `records: [name]`.
+- In the **dev** environment, the harness loads these very records by id (Step 5c).
+- In the **test** environment, the harness recreates them from the saved rows (factories plus the
+  attribute values that matter, synthetic personal data). Say which values were copied.
+- When a record is missing, say so and ask for another id. Don't guess.
+
 ## Step 5 — Scenarios and simulation
 
 **5a — Enumerate scenarios.** Cover each condition outcome, then the edge cases that apply:
@@ -167,7 +202,8 @@ report can show the state at every step. Finish with the outcome (response / ret
 state / side effects). Compare it with the expected behaviour from the context, the docs and
 common sense. Mark `status` and flag the step where it goes wrong.
 
-**5b — Execute with the runtime tracer** (with `--run`, or to confirm a reproduction in auto mode).
+**5b — Execute in the test environment with the runtime tracer** (with `--run`, or to confirm a
+reproduction in auto mode).
 In auto mode, ask the user first (AskUserQuestion), and show the command you will run and that it
 uses the test environment. Discovery shows the tracer and the test runner to use.
 - Write a throwaway harness in `<OUT_DIR>/harness/` that sets up the scenario's records (factories /
@@ -196,6 +232,48 @@ uses the test environment. Discovery shows the tracer and the test runner to use
 - If a run fails for setup reasons (DB not migrated, missing env), fix it inside the harness. If
   that doesn't work, stop running, keep it static, and say why. Never run migrations or seeds on
   a non-test DB.
+- Set `environment: "test"` on these scenarios.
+
+**5c — Execute against the development environment** (`--env dev`). It follows the real flow over
+the real dev data, records every DB read and write, then rolls everything back.
+1. Check that the dev DB is local (discovery's DB config: localhost, a socket, or a sqlite file).
+   If it's remote or looks like staging/production, refuse and explain.
+2. Ask the user first (AskUserQuestion), even with `--run`. Show the command, the records it will
+   touch, and the fact that it runs in a rolled-back sandbox with outbound network blocked.
+3. Write the harness so the scenario runs **inside the sandbox**, with the referenced records watched:
+   - **Rails**:
+     ```ruby
+     require "${CLAUDE_SKILL_DIR}/scripts/trace_rb.rb"
+     InvestigateTrace.sandbox("SC3", watch: { order: -> { Order.find(4512) }, refunds: -> { Refund.where(order_id: 4512) } }) do
+       Refunds::Create.call(order_id: 4512, amount_cents: 1000)     # or a controller/request call
+     end
+     ```
+     Run: `TRACE_ROOT=<REPO> TRACE_DIR=<OUT_DIR>/trace TRACE_ENV=development RAILS_ENV=development bin/rails runner <harness>`.
+     The block runs in one ActiveRecord transaction (rolled back). ActionMailer and ActiveJob are
+     switched to test adapters, so emails and jobs are captured, not sent.
+   - **Django**:
+     ```python
+     import investigate_trace as it
+     with it.sandbox("SC3", rollback="django", watch={"order": lambda: Order.objects.filter(pk=4512).values().first()}):
+         refund(4512, 1000)
+     ```
+     Run: `DJANGO_SETTINGS_MODULE=<settings> <python> trace_py.py --root <REPO> --env development
+     --out <OUT_DIR>/trace/SC3.json -- <harness>`. Emails go to the locmem backend.
+   - **SQLAlchemy / plain DB-API**: `rollback=<session or connection>`. If the code commits by
+     itself, bind the session to an outer transaction first (SQLAlchemy's "join a Session into an
+     external transaction" pattern). Otherwise the sandbox reports the COMMIT and those rows persist.
+   - **Other stacks**: wrap the scenario in the ORM's transaction and force a rollback (Prisma
+     `$transaction` + throw, knex `trx.rollback()`, GORM `tx.Rollback()`, EF `BeginTransaction()`
+     without commit), and log the data snapshots. If you can't guarantee a rollback, stay static.
+4. Read the digest (`trace_digest.py`). Its **Database activity** section lists every table read
+   and every INSERT / UPDATE / DELETE with its line and values. The **Sandbox** section shows the
+   watched records before → after, captured emails and jobs, blocked connections, and any COMMIT
+   that escaped the rollback.
+5. Mark these scenarios `environment: "development"`, `evidence: "executed"`, with `records` and
+   `trace`. Caveat in the outcome: `after_commit` callbacks and jobs enqueued after commit don't
+   run inside a rolled-back transaction, so simulate those statically.
+6. If the sandbox reports COMMITs, tell the user which tables and rows were changed in their dev DB
+   (from the Database activity writes). Don't try to undo them yourself.
 
 ## Step 6 — Reproduce (when a stack trace or bug report was given)
 
@@ -235,6 +313,6 @@ at most twice more. If a warning can't be fixed, say why in your reply.
 ## Step 9 — Reply
 
 Relay the printed SUMMARY in full: the verdict, the scenario table, the bugs, the reproduction,
-and the report link (`REPORT_URL`). Add one or two lines on what you would do next (the fix to
+the reference data, any sandbox warnings, and the report link (`REPORT_URL`). Add one or two lines on what you would do next (the fix to
 apply first, or what data or access would settle an inconclusive result). Mention which scenarios
 were executed and which were simulated. Don't apply fixes to the repo unless the user asks.

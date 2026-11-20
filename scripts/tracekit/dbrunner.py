@@ -46,12 +46,26 @@ class SqliteRunner(QueryRunner):
         path = os.path.abspath(self.target.path)
         if not os.path.isfile(path):
             raise InvestigateError("sqlite file not found: %s" % path)
-        con = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=self.timeout)     # read-only open
+        con = self._open(path)
         try:
             cur = con.execute(stmt)
             return [c[0] for c in cur.description or []], [list(r) for r in cur.fetchmany(limit)]
+        except sqlite3.Error as e:
+            raise InvestigateError("sqlite: %s" % e)
         finally:
             con.close()
+
+    def _open(self, path):
+        """Read-only open; a WAL-mode database (the Rails default) may refuse mode=ro without its
+        -shm file, so fall back to a normal open with PRAGMA query_only, which rejects every write."""
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=self.timeout)
+            con.execute("SELECT 1 FROM sqlite_master LIMIT 1")
+            return con
+        except sqlite3.OperationalError:
+            con = sqlite3.connect(path, timeout=self.timeout)
+            con.execute("PRAGMA query_only = ON")
+            return con
 
 
 class PostgresRunner(QueryRunner):

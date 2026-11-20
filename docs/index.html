@@ -36,7 +36,7 @@
   "url": "https://rewin0087.github.io/claude-code-investigate/",
   "downloadUrl": "https://github.com/rewin0087/claude-code-investigate",
   "codeRepository": "https://github.com/rewin0087/claude-code-investigate",
-  "softwareVersion": "1.0.0",
+  "softwareVersion": "1.1.0",
   "license": "https://opensource.org/licenses/MIT",
   "isAccessibleForFree": true,
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
@@ -57,6 +57,8 @@
      "acceptedAnswer": {"@type": "Answer", "text": "From your DB schema, test-data factories, fixtures, seeds and API contracts. With --db it can also read a few rows from a local dev or test database, read-only, with secrets and personal data masked."}},
     {"@type": "Question", "name": "Can it reproduce a bug from a stack trace?",
      "acceptedAnswer": {"@type": "Answer", "text": "Yes. Pass the trace with --trace or paste it. It maps the frames to your files, works out which input reaches the failing line, builds a reproduction scenario, and points at the step where the bad value is created."}},
+    {"@type": "Question", "name": "Can it run on my development database?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Yes, with --env dev and your approval. Scenarios run inside a rolled-back sandbox transaction; every read and write is recorded, emails and jobs are captured, outbound network is blocked, and any COMMIT that escaped the rollback is reported. Only local databases are used."}},
     {"@type": "Question", "name": "Does it change my repository?",
      "acceptedAnswer": {"@type": "Answer", "text": "No. Harnesses, traces and reports go to .investigate/ in your repo, which is excluded from git through .git/info/exclude."}}
   ]
@@ -243,6 +245,8 @@ footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; justify-content: space
       <div class="card"><div class="ic">⛁</div><h3>Realistic inputs</h3><p>Built from your DB schema, factories, fixtures, seeds and API contracts, or masked read-only samples from a local DB.</p></div>
       <div class="card"><div class="ic">▶</div><h3>Runtime tracer</h3><p>Python and Ruby tracers record every line's variable and attribute changes, SQL with binds, HTTP calls and exceptions.</p></div>
       <div class="card"><div class="ic">≣</div><h3>Stack trace reproduction</h3><p>Python, Ruby, JS/TS, Java/Kotlin, Go, PHP and .NET traces are mapped to your files and turned into a reproduction scenario.</p></div>
+      <div class="card"><div class="ic">⛁</div><h3>Replay on dev data</h3><p>Run scenarios on your local development DB inside a rolled-back sandbox. Every read and write is recorded, watched records are shown before → after, and nothing persists.</p></div>
+      <div class="card"><div class="ic">#</div><h3>The records that broke</h3><p>Name them (<code>Order#4512</code>) and it fetches them, read-only and masked, with their parents and children, then replays the bug on exactly that data.</p></div>
       <div class="card"><div class="ic">⌖</div><h3>Pin-pointed bugs</h3><p>The exact line, the value that makes it wrong, the scenarios that show it, a code fix and references.</p></div>
       <div class="card"><div class="ic">✎</div><h3>Your instructions</h3><p>Bug reports, repro steps, expected behaviour, screenshots, ticket links or free text after <code>--</code>.</p></div>
       <div class="card"><div class="ic">◫</div><h3>Highlight and go</h3><p>Select a method or class in VS Code or JetBrains and run <code>/investigate</code>.</p></div>
@@ -284,7 +288,9 @@ footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; justify-content: space
 <span class="c"># run scenarios with the runtime tracer (test env)</span>
 /investigate Orders::Checkout.call --run
 <span class="c"># realistic inputs from masked local-DB samples</span>
-/investigate "POST /api/orders" --db --scenarios 12</pre></div>
+/investigate "POST /api/orders" --db --scenarios 12
+<span class="c"># replay a bug on the records it hit, on dev data, rolled back</span>
+/investigate RefundService#call --env dev --record Order#4512</pre></div>
     <div class="two">
       <figure><img src="images/report-flow.png" width="1440" height="1000" loading="lazy" alt="Flow map: nodes by scenarios, and conditions by scenarios"><figcaption>Flow map: which scenario takes which path</figcaption></figure>
       <figure><img src="images/report-code.png" width="1440" height="900" loading="lazy" alt="Code view with executed lines, step markers and bug markers"><figcaption>Code: executed lines, step and bug markers</figcaption></figure>
@@ -300,6 +306,8 @@ footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; justify-content: space
       <details><summary>Which languages are supported?</summary><p>Any stack for static simulation. The line-by-line runtime tracers cover Python and Ruby/Rails. For JS/TS, Go, Java/Kotlin, PHP and .NET it writes a throwaway test that logs data snapshots. Stack traces are parsed for all of these.</p></details>
       <details><summary>Where does the test data come from?</summary><p>From your DB schema, factories, fixtures, seeds and API contracts. With <code>--db</code> it can also read a few rows from a local dev or test database, read-only, with secrets and personal data masked.</p></details>
       <details><summary>Can it reproduce a bug from a stack trace?</summary><p>Yes. Pass it with <code>--trace</code> or paste it. It maps the frames to your files, works out which input reaches the failing line, builds a reproduction scenario, and points at the step where the bad value is created.</p></details>
+      <details><summary>Can it run on my development database?</summary><p>Yes, with <code>--env dev</code>, after you approve it. Scenarios run inside a sandbox transaction that is rolled back (ActiveRecord, Django, SQLAlchemy). It records every read and write, captures emails and jobs, blocks outbound network, and reports any COMMIT that escaped the rollback. It only runs against local databases.</p></details>
+      <details><summary>Can I point it at the records a bug affected?</summary><p>Yes. Pass <code>--record Order#4512</code>, <code>table:id</code> or <code>"table where …"</code>, or just mention them. It reads them and their related rows, read-only and masked, and replays the bug on that data.</p></details>
       <details><summary>Does it change my repository?</summary><p>No. Harnesses, traces and reports go to <code>.investigate/</code> in your repo, which is excluded from git through <code>.git/info/exclude</code>.</p></details>
       <details><summary>Why is the plugin command <code>/investigate:investigate</code>?</summary><p>Claude Code namespaces plugin commands as <code>plugin:skill</code>. To type plain <code>/investigate</code>, install it as a standalone skill by cloning it into <code>~/.claude/skills/investigate</code>.</p></details>
     </div>

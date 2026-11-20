@@ -200,7 +200,7 @@ pre.json { margin: 0; padding: 10px 12px; background: var(--panel-2); border: 1p
 details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .ev-row td { font-family: var(--mono); font-size: 12px; }
 .ev-call td.e { color: var(--k-branch); } .ev-return td.e { color: var(--k-out); } .ev-sql td.e { color: var(--k-db); }
-.ev-http td.e { color: var(--k-ext); } .ev-exception td.e { color: var(--k-error); font-weight: 700; } .ev-line td.e { color: var(--k-state); }
+.ev-http td.e { color: var(--k-ext); } .ev-commit td.e { color: var(--bad); font-weight: 700; } .ev-exception td.e { color: var(--k-error); font-weight: 700; } .ev-line td.e { color: var(--k-state); }
 .help { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; place-items: center; z-index: 60; }
 .help.open { display: grid; }
 .help .card { width: min(460px, 92vw); }
@@ -208,6 +208,14 @@ kbd { font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--borde
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 6px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; z-index: 70; }
 .toast.show { opacity: .92; }
 .empty { color: var(--muted); font-style: italic; }
+.tag.env-development { color: var(--warn); border-color: var(--warn); font-weight: 650; }
+.tag.env-test { color: var(--ok); border-color: var(--ok); }
+.rec-tree { border-left: 2px solid var(--border); margin: 6px 0 6px 6px; padding-left: 10px; }
+.rec-tree .via { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.rec-tree table.t td, .rec-tree table.t th { font-family: var(--mono); font-size: 12px; padding: 4px 8px; }
+.sbox { border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; margin: 10px 12px; background: var(--panel-2); }
+.sbox.warn { border-color: var(--bad); background: var(--bad-soft); }
+.sbox h4 { margin: 0 0 6px; font-size: 13.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 1000px) {
   .layout { grid-template-columns: 1fr; height: auto; }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 46vh; }
@@ -419,8 +427,34 @@ function viewOverview() {
     if ((cov.not_covered || []).length) h += "<h3>Not covered</h3><ul class=ref-list>" + cov.not_covered.map(x => "<li>" + inline(x) + "</li>").join("") + "</ul>";
     h += "</div></div>";
   }
+  h += referenceCard();
   h += refsCard(INV.references, "References");
   return h;
+}
+function referenceCard() {
+  const refs = INV.reference_data || [];
+  if (!refs.length) return "";
+  const data = D.reference_data || {};
+  return '<div class="card" id="reference-data"><header><h2>Reference data</h2><span class="muted">existing records the investigation replays (masked)</span></header><div class="body">' +
+    refs.map(r => {
+      const used = SCS.filter(s => (s.records || []).includes(r.name)).map(s => '<a class="tag" href="#sc/' + esc(s.id) + '">' + esc(s.id) + "</a>").join(" ");
+      const d = data[r.name];
+      return '<div style="margin-bottom:12px"><b>' + esc(r.name) + "</b> " + (r.ref ? "<code>" + esc(r.ref) + "</code> " : "") +
+        (r.source ? '<span class="tag">' + esc(r.source) + "</span> " : "") + used + (r.note ? '<div class="muted">' + inline(r.note) + "</div>" : "") +
+        (d ? "<details><summary>records</summary>" + ((d.records || []).length ? d.records.map(recordTree).join("") : jsonHtml(d)) + "</details>" :
+          r.data !== undefined ? jsonHtml(r.data) : "") + "</div>";
+    }).join("") + "</div></div>";
+}
+function rowsTable(rows) {
+  if (!rows || !rows.length) return '<div class="empty">no rows</div>';
+  const cols = Object.keys(rows[0]);
+  return '<div style="overflow:auto"><table class="t"><thead><tr>' + cols.map(c => "<th>" + esc(c) + "</th>").join("") + "</tr></thead><tbody>" +
+    rows.map(r => "<tr>" + cols.map(c => "<td>" + val(r[c]) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>";
+}
+function recordTree(node) {
+  return '<div class="rec-tree"><div><b>' + esc(node.ref || node.table) + "</b>" + (node.via ? ' <span class="via">' + esc(node.via) + "</span>" : "") + "</div>" +
+    rowsTable(node.rows) + (node.parents || []).map(p => '<div class="rec-tree"><div>↑ <b>' + esc(p.table) + '</b> <span class="via">' + esc(p.via) + "</span></div>" + rowsTable(p.rows) + "</div>").join("") +
+    (node.children || []).map(recordTree).join("") + "</div>";
 }
 function refsCard(refs, title) {
   if (!refs || !refs.length) return "";
@@ -459,11 +493,16 @@ function viewScenario(sc) {
   let h = '<h1 class="page"><code>' + esc(sc.id) + "</code> " + esc(sc.title) + " " + statusPill(sc.status) +
     (sc.category ? ' <span class="tag">' + esc(sc.category.replace(/_/g, " ")) + "</span>" : "") +
     ' <span class="tag" title="' + (sc.evidence === "executed" ? "Recorded by running the code with the tracer" : "Traced by reading the code") + '">' +
-    esc(sc.evidence || "simulated") + "</span></h1>";
+    esc(sc.evidence || "simulated") + "</span>" +
+    (sc.environment ? ' <span class="tag env-' + esc(sc.environment) + '" title="' + (sc.environment === "development" ?
+      "Ran against the local development database inside a rolled-back sandbox" : "Ran in the test environment") + '">' + esc(sc.environment) + "</span>" : "") +
+    (sc.records || []).map(r => ' <a class="tag" href="#overview" title="Reference data">⛁ ' + esc(r) + "</a>").join("") + "</h1>";
   if (sc.description) h += '<div class="sub">' + inline(sc.description) + "</div>";
   h += '<div class="grid2"><div class="card"><header><h2>Input</h2>' + (inp.kind ? '<span class="tag">' + esc(inp.kind) + "</span>" : "") + '</header><div class="body">' +
     (inp.summary ? "<p style='margin-top:0'>" + inline(inp.summary) + "</p>" : "") +
     (inp.request ? jsonHtml(inp.request) : "") + (inp.data !== undefined ? (inp.request ? "<h3>Data</h3>" : "") + jsonHtml(inp.data) : "") +
+    (!inp.summary && !inp.request && inp.data === undefined && !(sc.fixtures || []).length ?
+      '<p class="empty" style="margin:0">' + ((sc.records || []).length ? "Existing records: " + sc.records.map(esc).join(", ") + " (see Reference data)" : "No input recorded.") + "</p>" : "") +
     ((sc.fixtures || []).length ? "<h3>Fixtures / existing data</h3>" + sc.fixtures.map(f => "<div style='margin-bottom:8px'><b>" + esc(f.name) + "</b>" +
       (f.source ? ' <span class="muted">from ' + esc(f.source) + "</span>" : "") + jsonHtml(f.data) + "</div>").join("") : "") +
     '</div></div><div class="card ' + (bad ? "outcome-bad" : "outcome-ok") + '"><header><h2>Outcome</h2>' + statusPill(sc.status) + '</header><div class="body">' +
@@ -545,16 +584,53 @@ function traceCard(tr, sc) {
       '</span> → <span class="after">' + esc(String(v[1]).slice(0, 120)) + "</span>").join("<br>");
     else if (e.ev === "sql") what = esc(e.sql) + (e.params ? ' <span class="muted">' + esc(e.params) + "</span>" : "");
     else if (e.ev === "http") what = esc(e.method + " " + e.url) + (e.status ? " → " + esc(e.status) : "") + (e.error ? " ✗ " + esc(e.error) : "");
+    else if (e.ev === "commit") what = "<b>COMMIT</b> via " + esc(e.via || "");
     else if (e.ev === "exception") what = esc(e.type + ": " + e.message) + (e.origin === "library" ? ' <span class="muted">(library)</span>' : "");
     return '<tr class="ev-row ev-' + esc(e.ev) + '"><td class="muted">' + e.i + '</td><td class="e">' + esc(e.ev) + "</td><td>" + locLink(e.file, e.line) +
       '</td><td style="padding-left:' + (8 + 12 * Math.max(0, (e.depth || 1) - 1)) + 'px">' + what + "</td></tr>";
   }).join("");
-  return '<div class="card"><header><h2>Recorded trace</h2><span class="tag">' + esc(tr.tool) + "</span><span class=muted>" + tr.events.length + " of " + tr.total_events +
+  return sandboxHtml(tr) + dbHtml(tr) + '<div class="card"><header><h2>Recorded trace</h2><span class="tag">' + esc(tr.tool) + "</span><span class=muted>" + tr.events.length + " of " + tr.total_events +
     " events · " + esc(tr.status) + (tr.duration_ms != null ? " · " + Math.round(tr.duration_ms) + " ms" : "") + (tr.truncated ? " · truncated" : "") +
+    (tr.hidden_library_raises ? " · " + tr.hidden_library_raises + " exception(s) handled inside libraries hidden" : "") +
     '</span></header><div class="body flush"><details' + (["fail", "bug", "reproduced"].includes(sc.status) ? " open" : "") +
     ' style="padding:8px 12px"><summary>Every call, data change, SQL statement, HTTP call and exception recorded while the scenario ran</summary>' +
     '<div style="max-height:520px;overflow:auto;margin-top:8px"><table class="t"><thead><tr><th>#</th><th>event</th><th>where</th><th>what</th></tr></thead><tbody>' + rows +
     "</tbody></table></div></details></div></div>";
+}
+
+function sandboxHtml(tr) {
+  const boxes = tr.sandboxes || [];
+  if (!boxes.length && !tr.environment && !tr.network_blocked) return "";
+  let h = '<div class="card"><header><h2>Run environment</h2>' + (tr.environment ? '<span class="tag env-' + esc(tr.environment) + '">' + esc(tr.environment) + "</span>" : "") +
+    (tr.network_blocked ? '<span class="tag">' + tr.network_blocked + " outbound connection(s) blocked</span>" : "") + '</header><div class="body flush">';
+  boxes.forEach(sb => {
+    h += '<div class="sbox' + (sb.commits ? " warn" : "") + '"><h4>Sandbox <code>' + esc(sb.name) + "</code>" +
+      (sb.rolled_back ? '<span class="st st-pass">rolled back</span>' : '<span class="st st-fail">not rolled back</span>') +
+      '<span class="tag">' + esc(sb.rollback) + "</span>" + (sb.commits ? '<span class="st st-bug">' + sb.commits + " commit(s) persisted</span>" : "") + "</h4>" +
+      (sb.warning ? '<div class="flag bug">' + esc(sb.warning) + "</div>" : "") + (sb.note ? '<div class="muted" style="font-size:12.5px">' + esc(sb.note) + "</div>" : "");
+    (sb.watch || []).forEach(w => {
+      h += '<div style="margin-top:6px"><b>' + esc(w.name) + "</b> " + ((w.changes || []).length ? "" : '<span class="muted">unchanged</span>') +
+        ((w.changes || []).length ? '<table class="changes"><tbody>' + w.changes.map(c => '<tr><td class="p">' + esc(c.path) + '</td><td><span class="before">' + val(c.before) +
+          '</span><span class="arrow">→</span><span class="after">' + val(c.after) + "</span></td></tr>").join("") + "</tbody></table>" : "") + "</div>";
+    });
+    if ((sb.emails || []).length) h += '<div style="margin-top:6px">✉ captured, not sent: ' + sb.emails.map(m => "<code>" + esc(m.subject) + "</code>").join(", ") + "</div>";
+    if ((sb.jobs || []).length) h += '<div style="margin-top:6px">⚙ captured, not enqueued: ' + sb.jobs.map(j => "<code>" + esc(j.job) + "</code>").join(", ") + "</div>";
+    if (sb.error) h += '<div class="flag bug">' + esc(sb.error.type + ": " + sb.error.message) + "</div>";
+    h += "</div>";
+  });
+  return h + "</div></div>";
+}
+function dbHtml(tr) {
+  const db = tr.db;
+  if (!db) return "";
+  const reads = Object.entries(db.reads || {});
+  return '<div class="card"><header><h2>Database activity</h2><span class="muted">' + (db.writes || []).length + " write(s) · " +
+    reads.reduce((n, kv) => n + kv[1], 0) + " read(s)" + (db.commits ? " · " + db.commits + " COMMIT(s)" : "") + '</span></header><div class="body flush">' +
+    (reads.length ? '<div style="padding:8px 12px">Reads: ' + reads.map(([t, n]) => "<code>" + esc(t) + "</code> ×" + n).join(", ") + "</div>" : "") +
+    ((db.writes || []).length ? '<table class="t"><thead><tr><th>Write</th><th>Table</th><th>Where</th><th>Statement</th></tr></thead><tbody>' +
+      db.writes.map(w => "<tr><td><b>" + esc(w.op) + "</b></td><td><code>" + esc((w.tables || []).join(", ")) + "</code></td><td>" + locLink(w.file, w.line) +
+        '</td><td style="font-family:var(--mono);font-size:12px">' + esc(w.sql) + (w.params ? '<div class="muted">' + esc(w.params) + "</div>" : "") + "</td></tr>").join("") +
+      "</tbody></table>" : '<div class="body empty">No writes.</div>') + "</div></div>";
 }
 
 /* ---------- flow ---------- */

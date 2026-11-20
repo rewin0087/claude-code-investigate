@@ -8,7 +8,7 @@ import json
 import os
 
 from .sourcefile import SourceCache
-from .vocabulary import (CATEGORIES, CHANGE_OPS, EVIDENCE, NODE_KINDS, NO_CHANGE_OK, SCENARIO_STATUSES, SEVERITIES,
+from .vocabulary import (CATEGORIES, CHANGE_OPS, ENVIRONMENTS, EVIDENCE, NODE_KINDS, NO_CHANGE_OK, SCENARIO_STATUSES, SEVERITIES,
                          STEP_KINDS, VERDICTS)
 
 
@@ -19,12 +19,14 @@ class InvestigationValidator(object):
         self.errors, self.warnings = [], []
         self.node_ids = self.cond_ids = self.bug_ids = self.scenario_ids = set()
         self.used_conditions = set()
+        self.reference_names = set()
 
     def validate(self):
         """-> (errors, warnings). Also numbers the steps (n) in place."""
         self._header()
         self._flow()
         self._conditions()
+        self._reference_data()
         self.bug_ids = self._ids(self.inv.get("bugs") or [], "bug")
         self._scenarios()
         self._coverage()
@@ -98,6 +100,20 @@ class InvestigationValidator(object):
         for c in conds:
             self._anchor(c, "condition %s" % c.get("id"))
 
+    def _reference_data(self):
+        """Existing records the investigation replays (from records.py / dbquery.py, saved under data/)."""
+        refs = self.inv.get("reference_data") or []
+        self.reference_names = set()
+        for r in refs:
+            if not r.get("name"):
+                self.errors.append("reference_data entry without a name: %s" % json.dumps(r)[:100])
+                continue
+            if r["name"] in self.reference_names:
+                self.errors.append("duplicate reference_data name %s" % r["name"])
+            self.reference_names.add(r["name"])
+            if r.get("path") and not os.path.exists(os.path.join(self.out_dir, r["path"])):
+                self.errors.append("reference_data %s: %s not found in the output folder" % (r["name"], r["path"]))
+
     def _scenarios(self):
         scenarios = self.inv.get("scenarios") or []
         if not scenarios:
@@ -115,6 +131,13 @@ class InvestigationValidator(object):
             self.errors.append(w + ": category %r must be one of %s" % (sc["category"], ", ".join(CATEGORIES)))
         if sc.get("evidence", "simulated") not in EVIDENCE:
             self.errors.append(w + ": evidence must be simulated or executed")
+        if sc.get("environment") and sc["environment"] not in ENVIRONMENTS:
+            self.errors.append(w + ": environment must be one of %s" % ", ".join(ENVIRONMENTS))
+        for r in sc.get("records") or []:
+            if r not in self.reference_names:
+                self.errors.append(w + ": records references unknown reference_data %r" % r)
+        if sc.get("environment") == "development" and sc.get("evidence") == "executed":
+            self._dev_run(sc, w)
         for p in sc.get("path") or []:
             if p not in self.node_ids:
                 self.errors.append(w + ": path references unknown node %r" % p)
@@ -141,6 +164,24 @@ class InvestigationValidator(object):
             self.warnings.append(w + " records no data changes (changes / db / external / state) in any step")
         if not (sc.get("outcome") or {}).get("result"):
             self.warnings.append(w + " has no outcome.result")
+
+    def _dev_run(self, sc, w):
+        """A development-environment run must have been sandboxed; persisted writes must be disclosed."""
+        if not sc.get("trace"):
+            return
+        try:
+            with open(os.path.join(self.out_dir, sc["trace"])) as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return
+        boxes = data.get("sandboxes") or []
+        if not boxes:
+            self.warnings.append(w + " ran against development data without a sandbox: say what it wrote, or rerun inside "
+                                     "InvestigateTrace.sandbox / investigate_trace.sandbox")
+        for sb in boxes:
+            if sb.get("commits") and "commit" not in json.dumps(sc).lower():
+                self.warnings.append(w + ": sandbox %s saw %d COMMIT(s) that persisted in the dev DB; mention it in the "
+                                         "scenario (description or a step flag)" % (sb.get("name"), sb["commits"]))
 
     def _step(self, st, sw):
         """Validates one step; True when it records a data change."""

@@ -27,8 +27,8 @@ def loc(o):
 class SummaryWriter(object):
     """Markdown summary: verdict, scenario table, bugs, reproduction, insights, report link."""
 
-    def __init__(self, inv, report_path):
-        self.inv, self.report_path = inv, report_path
+    def __init__(self, inv, report_path, traces=None):
+        self.inv, self.report_path, self.traces = inv, report_path, traces or {}
 
     def write(self):
         L = self._header()
@@ -49,10 +49,19 @@ class SummaryWriter(object):
         bits = []
         if tgt.get("label"):
             bits.append("Target: `%s`" % tgt["label"])
-        bits.append("Scenarios: %d (%d executed with the tracer, %d simulated)" % (len(scs), executed, len(scs) - executed))
+        dev = sum(1 for x in scs if x.get("evidence") == "executed" and x.get("environment") == "development")
+        bits.append("Scenarios: %d (%d executed with the tracer%s; %d simulated)" % (
+            len(scs), executed, (" — %d of them on development data in a rolled-back sandbox" % dev) if dev else "", len(scs) - executed))
         if s.get("stack"):
             bits.append("Stack: %s" % s["stack"])
         L.append(" · ".join(bits))
+        refs = inv.get("reference_data") or []
+        if refs:
+            L.append("Reference data: " + ", ".join("`%s`" % (r.get("ref") or r.get("name")) for r in refs))
+        for sid, t in sorted(self.traces.items()):
+            for sb in t.get("sandboxes") or []:
+                if sb.get("warning"):
+                    L.append("⚠️ %s (sandbox %s): %s" % (sid, sb.get("name"), sb["warning"]))
         if s.get("overview"):
             L += ["", s["overview"].strip()]
         return L

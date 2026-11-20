@@ -7,14 +7,25 @@
 #   * SQL issued through ActiveRecord (sql.active_record notifications) with bind values
 #   * outgoing HTTP through Net::HTTP (Faraday, HTTParty and RestClient use it by default)
 #
-# Two ways to use it (always against the TEST environment):
+# Use it against the TEST environment, or a LOCAL DEVELOPMENT database inside a sandbox.
+# While it records, outbound TCP to anything but loopback is blocked (TRACE_ALLOW_HOSTS=a,b or
+# TRACE_ALLOW_NETWORK=1 to relax). Three ways to use it:
 #
 #   1. In a throwaway harness / spec, wrap exactly the scenario:
 #        require "/abs/path/to/trace_rb.rb"
 #        InvestigateTrace.record("SC1") { post "/users/sign_in", params: {...} }
 #      -> writes $TRACE_DIR/SC1.json (default: <TRACE_ROOT>/.investigate/trace/SC1.json)
 #
-#   2. Trace a whole existing command:
+#   2. Run against real development data, rolled back afterwards (RAILS_ENV=development):
+#        InvestigateTrace.sandbox("SC1", watch: { order: -> { Order.find(4512) } }) do
+#          Refunds::Create.call(order_id: 4512, amount_cents: 1000)
+#        end
+#      -> one ActiveRecord transaction, rolled back at the end; watched records are reloaded
+#         before and after (inside the transaction); ActionMailer / ActiveJob deliveries are
+#         captured instead of sent; COMMITs that still reach the DB are reported.
+#        TRACE_ROOT=$PWD TRACE_DIR=… TRACE_ENV=development RAILS_ENV=development bin/rails runner harness.rb
+#
+#   3. Trace a whole existing command:
 #        TRACE_AUTOSTART=1 TRACE_OUT=/abs/out.json TRACE_ROOT=$PWD \
 #          RUBYOPT="-r/abs/path/to/trace_rb.rb" RAILS_ENV=test bundle exec rspec spec/x_spec.rb:12
 #
@@ -23,8 +34,9 @@
 # TRACE_MAX_EVENTS (default 20000), TRACE_NO_MASK=1 (don't redact secret-looking values).
 #
 # Structure: AppFiles (which files are app code), ValueFormatter (safe inspect + snapshots),
-# Recorder (TracePoint callbacks + event log), NetHTTPHook (outgoing HTTP), and the
-# InvestigateTrace module functions start / stop / record / install_hooks.
+# Recorder (TracePoint callbacks + event log), NetHTTPHook (outgoing HTTP), NetworkGuard
+# (outbound TCP), Sandbox (rolled-back transaction, watches, mail/job capture), and the
+# InvestigateTrace module functions start / stop / record / sandbox / install_hooks.
 require "json"
 require "fileutils"
 
@@ -111,7 +123,7 @@ module InvestigateTrace
       snap = {}
       binding.local_variables.each do |v|
         next if v.to_s.start_with?("_")
-        snap[v.to_s] = safe(v, binding.local_variable_get(v))
+        put(snap, v.to_s, binding.local_variable_get(v))
       end
       if defined?(ActiveRecord::Base) && obj.is_a?(ActiveRecord::Base)
         obj.attributes.first(40).each { |k, v| snap["self.#{k}"] = safe(k, v) }
@@ -119,18 +131,31 @@ module InvestigateTrace
       elsif !obj.is_a?(Module)
         obj.instance_variables.first(30).each do |iv|
           next if iv.to_s.start_with?("@_")
-          snap[iv.to_s] = safe(iv, obj.instance_variable_get(iv))
+          put(snap, iv.to_s, obj.instance_variable_get(iv))
         end
       end
       snap
     rescue StandardError
       snap || {}
     end
+
+    # ActiveRecord objects are shown attribute by attribute, so "@order.status: pending -> paid"
+    # appears on the line that changed it instead of a whole new inspect string.
+    def put(snap, name, value)
+      if defined?(ActiveRecord::Base) && value.is_a?(ActiveRecord::Base)
+        snap[name] = "#<#{value.class.name}#{value.new_record? ? ' new' : ''}>"
+        value.attributes.first(40).each { |k, v| snap["#{name}.#{k}"] = safe(k, v) }
+        snap["#{name}.errors"] = value.errors.full_messages.inspect if value.errors.any?
+      else
+        snap[name] = safe(name, value)
+      end
+    end
   end
 
   # TracePoint callbacks: calls, per-line changes, returns, raises, SQL and HTTP events.
   class Recorder
-    attr_reader :events
+    attr_reader :events, :fmt, :sandboxes
+    attr_accessor :sandbox
 
     def initialize(out)
       @out = out
@@ -145,11 +170,15 @@ module InvestigateTrace
       @stack = []
       @truncated = false
       @busy = false
+      @paused = false
+      @sandbox = nil
+      @sandboxes = []
+      @blocked = 0
       @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     def emit(ev)
-      return unless @active
+      return if !@active || @paused
       if @events.size >= @max
         @truncated = true
         return
@@ -259,7 +288,13 @@ module InvestigateTrace
     def on_sql(payload)
       return unless @active
       name = payload[:name].to_s
-      return if name == "SCHEMA" || payload[:sql].to_s =~ /\A\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i
+      if payload[:sql].to_s =~ /\A\s*COMMIT\b/i
+        file, line, fn = app_caller
+        emit("ev" => "commit", "file" => file, "line" => line, "fn" => fn, "via" => "active_record")
+        @sandbox.commits += 1 if @sandbox
+        return
+      end
+      return if name == "SCHEMA" || payload[:sql].to_s =~ /\A\s*(BEGIN|ROLLBACK|SAVEPOINT|RELEASE)/i
       file, line, fn = app_caller
       return unless file
       binds = (payload[:type_casted_binds] || []) rescue []
@@ -282,17 +317,213 @@ module InvestigateTrace
       emit(ev)
     end
 
+    # Evaluate without recording (watch queries are not part of the scenario).
+    def quietly
+      was = @paused
+      @paused = true
+      yield
+    ensure
+      @paused = was
+    end
+
+    def on_blocked(host, port)
+      @blocked += 1
+      file, line, fn = app_caller
+      emit("ev" => "http", "file" => file, "line" => line, "fn" => fn, "method" => "CONNECT", "url" => "#{host}:#{port}",
+           "blocked" => true, "error" => "blocked by investigate: outbound network is off (TRACE_ALLOW_HOSTS=#{host})")
+    end
+
     def write(status, error = nil)
       data = { "tool" => "trace_rb", "version" => 1, "root" => @files.root, "status" => status,
                "duration_ms" => ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started) * 1000).round(1),
                "truncated" => @truncated, "events" => @events }
       data["error"] = error if error
+      data["environment"] = ENV["TRACE_ENV"] if ENV["TRACE_ENV"]
+      data["sandboxes"] = @sandboxes unless @sandboxes.empty?
+      data["network_blocked"] = @blocked if @blocked > 0
       FileUtils.mkdir_p(File.dirname(@out))
       File.write(@out, JSON.generate(data))
       count = ->(k) { @events.count { |e| e["ev"] == k } }
       changed = @events.count { |e| e["changes"] }
       warn "[trace_rb] #{status}: #{@events.size} events (#{count.('call')} calls, #{changed} lines with data changes, " \
            "#{count.('sql')} sql, #{count.('http')} http)#{@truncated ? ' TRUNCATED' : ''} -> #{@out}"
+    end
+  end
+
+  # Refuses outbound TCP connections except loopback / TRACE_ALLOW_HOSTS while recording.
+  # (C database drivers such as pg / mysql2 don't go through these Ruby sockets.)
+  module NetworkGuard
+    LOOPBACK = %w[localhost 127.0.0.1 ::1 0.0.0.0 ip6-localhost].freeze
+
+    def self.allowed?(host)
+      h = host.to_s.downcase.delete("[]")
+      return true if ENV["TRACE_ALLOW_NETWORK"] == "1" || LOOPBACK.include?(h) || h.start_with?("127.")
+      return true if (ENV["TRACE_ALLOW_HOSTS"] || "").split(",").map(&:strip).include?(h)
+      require "resolv"
+      addrs = Resolv.getaddresses(h) rescue []
+      !addrs.empty? && addrs.all? { |a| a.start_with?("127.") || a == "::1" }
+    end
+
+    def self.check!(host, port)
+      rec = InvestigateTrace.current
+      return if rec.nil? || host.nil? || allowed?(host)
+      rec.guard { rec.on_blocked(host, port) }
+      raise Errno::ECONNREFUSED, "investigate: outbound connection to #{host}:#{port} blocked"
+    end
+
+    module TCPSocketHook
+      def initialize(*args, &block)
+        NetworkGuard.check!(args[0], args[1])
+        super
+      end
+      ruby2_keywords(:initialize) if respond_to?(:ruby2_keywords, true)
+    end
+
+    module SocketTcpHook
+      def tcp(host, port, *args, &block)
+        NetworkGuard.check!(host, port)
+        super
+      end
+      ruby2_keywords(:tcp) if respond_to?(:ruby2_keywords, true)
+    end
+
+    def self.install
+      return if @installed
+      require "socket"
+      TCPSocket.prepend(TCPSocketHook)
+      Socket.singleton_class.prepend(SocketTcpHook)
+      @installed = true
+    end
+  end
+
+  # One scenario against real (development) data: an ActiveRecord transaction that is rolled
+  # back, watched records before/after, ActionMailer / ActiveJob deliveries captured.
+  class Sandbox
+    attr_accessor :commits
+    attr_reader :result
+
+    def initialize(rec, name, watch)
+      @rec, @watch = rec, watch || {}
+      @commits = 0
+      @result = { "name" => name, "rollback" => defined?(ActiveRecord::Base) ? "active_record" : "none",
+                  "rolled_back" => false, "watch" => [], "emails" => [], "jobs" => [] }
+    end
+
+    def run
+      before = snapshot
+      capture_side_effects do
+        if defined?(ActiveRecord::Base)
+          @in_transaction = true
+          ActiveRecord::Base.transaction(requires_new: true) do
+            begin
+              yield
+            ensure
+              finish(before)
+            end
+            raise ActiveRecord::Rollback
+          end
+        else
+          begin
+            yield
+          ensure
+            finish(before)
+          end
+        end
+      end
+    ensure
+      @result["rolled_back"] = true if @in_transaction     # by ActiveRecord::Rollback, or by the exception
+      @result["commits"] = @commits
+      @result["warning"] = "the code committed #{@commits} transaction(s) inside the sandbox: those changes were NOT rolled back" if @commits > 0
+      @result["warning"] ||= "no ActiveRecord: writes made by the scenario persist" unless defined?(ActiveRecord::Base)
+      @result["note"] = "after_commit callbacks and jobs enqueued after commit do not run inside a rolled-back transaction"
+    end
+
+    def finish(before)
+      after = snapshot     # still inside the transaction: shows what the scenario wrote
+      @watch.each_key do |k|
+        @result["watch"] << { "name" => k.to_s, "before" => before[k], "after" => after[k], "changes" => diff(before[k], after[k]) }
+      end
+    end
+
+    def snapshot
+      out = {}
+      @watch.each do |k, fn|
+        out[k] = begin
+          @rec.quietly { plain(fn.call) }
+        rescue StandardError => e
+          "<watch failed: #{e.class}: #{e.message}>"
+        end
+      end
+      out
+    end
+
+    def plain(v, depth = 0)
+      case v
+      when nil, true, false, Numeric, String then v
+      when Symbol then v.to_s
+      when Hash then v.first(60).map { |k, x| [k.to_s, @rec.fmt.secret?(k) && x ? "[redacted]" : plain(x, depth + 1)] }.to_h
+      when Array then depth < 4 ? v.first(30).map { |x| plain(x, depth + 1) } : "[…]"
+      else
+        if defined?(ActiveRecord::Relation) && v.is_a?(ActiveRecord::Relation)
+          v.limit(30).to_a.map { |r| plain(r, depth + 1) }
+        elsif defined?(ActiveRecord::Base) && v.is_a?(ActiveRecord::Base)
+          r = (v.persisted? ? (v.class.find_by(v.class.primary_key => v.id) || v) : v)
+          plain(r.attributes, depth + 1)
+        else
+          @rec.fmt.safe(:value, v)
+        end
+      end
+    end
+
+    def diff(b, a, prefix = "")
+      if b.is_a?(Hash) && a.is_a?(Hash)
+        (b.keys | a.keys).flat_map { |k| diff(b[k], a[k], "#{prefix}#{k}.") }
+      elsif b.is_a?(Array) && a.is_a?(Array) && b.size == a.size
+        b.each_with_index.flat_map { |x, i| diff(x, a[i], "#{prefix}#{i}.") }
+      else
+        b == a ? [] : [{ "path" => prefix.chomp(".").empty? ? "value" : prefix.chomp("."), "before" => b, "after" => a }]
+      end
+    end
+
+    def capture_side_effects
+      mail_state = capture_mail
+      job_adapter = capture_jobs
+      yield
+    ensure
+      collect_mail(mail_state)
+      collect_jobs(job_adapter)
+    end
+
+    def capture_mail
+      return nil unless defined?(ActionMailer::Base)
+      state = [ActionMailer::Base.delivery_method, ActionMailer::Base.perform_deliveries]
+      ActionMailer::Base.delivery_method = :test
+      ActionMailer::Base.perform_deliveries = true
+      @mail_start = ActionMailer::Base.deliveries.size
+      state
+    end
+
+    def collect_mail(state)
+      return unless state
+      ActionMailer::Base.deliveries[@mail_start..-1].to_a.each do |m|
+        @result["emails"] << { "subject" => m.subject.to_s, "to" => Array(m.to).size }
+      end
+      ActionMailer::Base.delivery_method, ActionMailer::Base.perform_deliveries = state
+    end
+
+    def capture_jobs
+      return nil unless defined?(ActiveJob::Base)
+      original = ActiveJob::Base.queue_adapter
+      ActiveJob::Base.queue_adapter = :test
+      original
+    end
+
+    def collect_jobs(original)
+      return if original.nil?
+      ActiveJob::Base.queue_adapter.enqueued_jobs.each do |j|
+        @result["jobs"] << { "job" => (j[:job] || j["job_class"]).to_s, "queue" => (j[:queue] || j["queue_name"]).to_s }
+      end
+      ActiveJob::Base.queue_adapter = original
     end
   end
 
@@ -363,7 +594,24 @@ module InvestigateTrace
       result
     end
 
+    # Run the block against real (development) data, rolled back afterwards; records <name>.json.
+    def sandbox(name, watch: {}, out: nil)
+      record(name, out: out) do
+        sb = Sandbox.new(current, name, watch)
+        current.sandbox = sb
+        begin
+          result = nil
+          sb.run { result = yield }
+          result
+        ensure
+          current.sandbox = nil
+          current.sandboxes << sb.result
+        end
+      end
+    end
+
     def install_hooks
+      NetworkGuard.install unless ENV["TRACE_ALLOW_NETWORK"] == "1"
       if !@sql_hooked && defined?(ActiveSupport::Notifications)
         ActiveSupport::Notifications.subscribe("sql.active_record") do |*args|
           rec = InvestigateTrace.current

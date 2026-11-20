@@ -27,6 +27,9 @@ The scripts in the parent directory are thin command-line wrappers around these 
     dbrunner.py     QueryRunner -> SqliteRunner, PostgresRunner, MysqlRunner (read-only sessions)
     masking.py      RowMasker: secrets redacted, personal data masked
 
+  Reference data (records.py)
+    records.py      RecordRef, SchemaIntrospector, RecordGraph: the records a bug hit + neighbours
+
   Runtime traces (trace_digest.py; the tracers themselves are standalone scripts)
     tracelog.py     TraceLog (load, compact for the report), TraceDigest (readable timeline)
 

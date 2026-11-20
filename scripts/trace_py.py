@@ -10,19 +10,36 @@ requests (requests, httpx, urllib, http.client).
 Standalone on purpose: run it with the PROJECT's interpreter (its venv), e.g.
   .venv/bin/python trace_py.py --root . --out trace/SC1.json -- -m pytest path/sim_sc1.py -q
   .venv/bin/python trace_py.py --root . --out trace/SC2.json -- harness/sim_sc2.py
-Use it only against a test / local environment. Values of password/secret/token-like names
-are redacted unless --no-mask is given.
+Use it against a test or LOCAL development environment only. Outbound network connections to
+anything but loopback are blocked while it runs (--allow-host / --allow-network to relax).
+Values of password/secret/token-like names are redacted unless --no-mask is given.
+
+Harnesses can wrap a scenario in a rolled-back sandbox (the API is importable while tracing):
+
+  import investigate_trace as it
+  with it.sandbox("SC1", rollback="django",                      # or a DB-API connection / SQLAlchemy session
+                  watch={"order": lambda: Order.objects.filter(pk=4512).values().first()}):
+      client.post("/orders/4512/refund", ...)
+
+Reads see the real dev data; every read and write is recorded; watched records are captured
+before and after (inside the transaction); then everything is rolled back. Commits issued by
+the code itself are detected and reported, because those changes would persist.
 
 Structure (one file on purpose, so it runs under any interpreter without installing anything):
   AppFiles        which files are "our code" (under --root, not site-packages / tests)
   ValueFormatter  safe, redacted, size-limited repr of values (never triggers a DB query)
   Snapshotter     the variables of a frame, with app objects expanded attribute by attribute
   EventLog        the recorded events, the event limit, and writing the JSON log
-  LibraryProbe    SQL and HTTP calls made by libraries, attributed to the app line that caused them
+  LibraryProbe    SQL, HTTP and COMMIT calls made by libraries, attributed to the app line that caused them
+  NetworkGuard    blocks outbound connections except loopback (and --allow-host)
+  Sandbox         rolled-back transaction + watched records + captured emails, for dev-env runs
   Recorder        the sys.settrace callbacks: calls, per-line changes, returns, exceptions
   TraceRunner     command line: runs the script / module under the Recorder
 """
 import argparse
+import contextlib
+import socket
+import types
 import json
 import os
 import re
@@ -39,6 +56,11 @@ SQL_FUNCS = {"execute", "executemany", "do_execute", "do_executemany", "_execute
 SQL_ARGS = ("sql", "statement", "operation", "query", "stmt", "raw_query")
 HTTP_FUNCS = {("requests.sessions", "request"), ("httpx._client", "request"), ("httpx._client", "send"),
               ("http.client", "request"), ("urllib.request", "urlopen"), ("aiohttp.client", "_request")}
+CO_NEWLOCALS = 0x0002
+TX_CONTROL = re.compile(r"^\s*(BEGIN|SAVEPOINT|RELEASE|ROLLBACK TO|SET TRANSACTION|START TRANSACTION)\b", re.I)
+COMMIT_FUNCS = {"commit", "_commit_impl", "commit_db_transaction"}
+DB_MODULES = ("django.db", "sqlalchemy", "psycopg", "pymysql", "MySQLdb", "peewee", "tortoise")
+LOOPBACK = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "ip6-localhost"}
 SKIP_ATTR = re.compile(r"^(_sa_instance_state|_state|_prefetched_objects_cache|__\w+__|_django_version)$")
 
 
@@ -173,11 +195,12 @@ class EventLog(object):
         self.max_events = max_events
         self.events = []
         self.truncated = False
-        self.active = True
+        self.active = True             # off outside --entry
+        self.paused = False            # on while the harness's own watch queries run
         self.started = time.time()
 
     def emit(self, ev):
-        if not self.active:
+        if not self.active or self.paused:
             return
         if len(self.events) >= self.max_events:
             self.truncated = True
@@ -193,12 +216,13 @@ class EventLog(object):
     def count(self, kind):
         return sum(1 for e in self.events if e["ev"] == kind)
 
-    def write(self, out, root, status, error=None):
+    def write(self, out, root, status, error=None, extra=None):
         data = {"tool": "trace_py", "version": 1, "root": root, "status": status,
                 "argv": sys.argv[1:], "duration_ms": round((time.time() - self.started) * 1000, 1),
                 "truncated": self.truncated, "events": self.events}
         if error:
             data["error"] = error
+        data.update(extra or {})
         d = os.path.dirname(os.path.abspath(out))
         if not os.path.isdir(d):
             os.makedirs(d)
@@ -220,6 +244,8 @@ class LibraryProbe(object):
         name, mod = code.co_name, frame.f_globals.get("__name__", "")
         if name in SQL_FUNCS:
             self._sql(frame, mod)
+        elif name in COMMIT_FUNCS and mod.startswith(DB_MODULES):
+            self.commit(mod, frame.f_back)
         elif (mod, name) in HTTP_FUNCS or (name == "request" and mod.startswith(("requests", "httpx"))):
             self._http(frame, mod)
 
@@ -231,8 +257,13 @@ class LibraryProbe(object):
             sql = str(s) if s is not None and type(s).__name__ in ("TextClause", "Select", "Insert", "Update", "Delete") else None
         if not sql:
             return
+        if TX_CONTROL.match(sql):
+            return          # BEGIN / SAVEPOINT / RELEASE: transaction plumbing, not data access
         params = next((loc[a] for a in ("params", "parameters", "args", "parameters_list") if a in loc), None)
         f, l, fn = self.rec.files.caller(frame.f_back)
+        last = self.rec.log.last
+        if last.get("ev") == "sql" and last.get("sql") == sql.strip()[:2000] and last.get("line") == l and last.get("file") == f:
+            return          # the same statement seen again through a nested cursor wrapper
         if f:
             self.rec.log.emit({"ev": "sql", "file": f, "line": l, "fn": fn, "depth": self.rec.depth + 1, "sql": sql.strip()[:2000],
                                "params": self.rec.fmt.format("params", params) if params is not None else None,
@@ -257,6 +288,13 @@ class LibraryProbe(object):
                                "method": str(method or "GET").upper(),
                                "url": self.rec.fmt.unquote(self.rec.fmt.format("url", str(url))), "via": mod})
 
+    def commit(self, via, frame):
+        """A transaction COMMIT reached the database (inside a sandbox, those changes persist)."""
+        f, l, fn = self.rec.files.caller(frame)
+        self.rec.log.emit({"ev": "commit", "file": f, "line": l, "fn": fn, "depth": self.rec.depth + 1, "via": via})
+        if self.rec.sandbox:
+            self.rec.sandbox.commits += 1
+
     def install_sqlite(self):
         """sqlite3 is a C module, invisible to settrace: record its statements via set_trace_callback."""
         try:
@@ -279,10 +317,210 @@ class LibraryProbe(object):
         last = rec.log.last
         if last.get("ev") == "sql" and last.get("via") != "sqlite3":
             return          # already recorded at the DB-API / ORM level, with params
+        if re.match(r"^\s*COMMIT\b", stmt, re.I):
+            self.commit("sqlite3", sys._getframe(1))
+            return
         f, l, fn = rec.files.caller(sys._getframe(1))
         if f and not re.match(r"^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|PRAGMA)\b", stmt, re.I):
             rec.log.emit({"ev": "sql", "file": f, "line": l, "fn": fn, "depth": rec.depth + 1, "sql": stmt.strip()[:2000],
                           "op": (stmt.strip().split() or ["?"])[0].upper(), "via": "sqlite3"})
+
+
+class NetworkGuard(object):
+    """Refuses outbound socket connections except loopback / unix sockets / allowed hosts.
+
+    Database drivers written in C (psycopg, mysqlclient) don't use Python sockets and are
+    unaffected; pure-Python drivers and HTTP clients are. Blocked attempts are recorded."""
+
+    def __init__(self, recorder, allow_hosts=()):
+        self.rec = recorder
+        self.allow = {h.lower() for h in allow_hosts}
+        self.blocked = 0
+
+    def install(self):
+        real_connect, real_connect_ex, guard = socket.socket.connect, socket.socket.connect_ex, self
+
+        def connect(sock, address):
+            guard.check(sock, address)
+            return real_connect(sock, address)
+
+        def connect_ex(sock, address):
+            guard.check(sock, address)
+            return real_connect_ex(sock, address)
+        socket.socket.connect, socket.socket.connect_ex = connect, connect_ex
+
+    def allowed(self, host):
+        host = str(host).lower().strip("[]")
+        if host in LOOPBACK or host in self.allow or host.startswith("127."):
+            return True
+        try:
+            return all(info[4][0].startswith("127.") or info[4][0] == "::1" for info in socket.getaddrinfo(host, None))
+        except (socket.gaierror, UnicodeError):
+            return False
+
+    def check(self, sock, address):
+        if getattr(socket, "AF_UNIX", None) is not None and sock.family == socket.AF_UNIX:
+            return
+        host, port = (address[0], address[1]) if isinstance(address, tuple) else (address, None)
+        if self.allowed(host):
+            return
+        self.blocked += 1
+        f, l, fn = self.rec.files.caller(sys._getframe(2))
+        self.rec.log.emit({"ev": "http", "file": f, "line": l, "fn": fn, "depth": self.rec.depth + 1, "method": "CONNECT",
+                           "url": "%s:%s" % (host, port), "blocked": True,
+                           "error": "blocked by investigate: outbound network is off (use --allow-host %s)" % host})
+        raise ConnectionRefusedError("investigate: outbound connection to %s:%s blocked" % (host, port))
+
+
+def to_plain(value, fmt, depth=0):
+    """JSON-safe, masked copy of a watched value (dicts, lists, model objects)."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return {str(k): ("[redacted]" if fmt.mask and SECRET_NAME.search(str(k)) and v else to_plain(v, fmt, depth + 1))
+                for k, v in list(value.items())[:60]}
+    if isinstance(value, (list, tuple, set)) or type(value).__name__ in ("QuerySet", "ValuesQuerySet"):
+        return [to_plain(v, fmt, depth + 1) for v in list(value)[:30]] if depth < 4 else "[…]"
+    d = getattr(value, "__dict__", None)
+    if isinstance(d, dict) and depth < 4:
+        return {k: to_plain(v, fmt, depth + 1) if not (fmt.mask and SECRET_NAME.search(k) and v) else "[redacted]"
+                for k, v in list(d.items())[:60] if not SKIP_ATTR.match(k) and not k.startswith("_") and not callable(v)}
+    return fmt.unquote(fmt.format("value", value))
+
+
+class Sandbox(object):
+    """One rolled-back scenario: transaction strategy, watched records, emails, commits seen."""
+
+    def __init__(self, recorder, name, rollback, watch):
+        self.rec, self.name, self.rollback, self.watch = recorder, name, rollback, watch or {}
+        self.commits = 0
+        self.result = {"name": name, "rollback": self._label(), "rolled_back": False, "watch": [], "emails": []}
+        self._django_atomic = None
+        self._outbox_start = 0
+
+    def _label(self):
+        r = self.rollback
+        if r is None:
+            return "none"
+        if isinstance(r, str):
+            return r
+        return type(r).__module__.split(".")[0] + "." + type(r).__name__
+
+    def _quiet(self, fn):
+        """Run fn without recording (watch queries are not part of the scenario)."""
+        log = self.rec.log
+        was, log.paused = log.paused, True
+        try:
+            return fn()
+        finally:
+            log.paused = was
+
+    def _snapshot(self):
+        out = {}
+        for k, fn in self.watch.items():
+            try:
+                out[k] = to_plain(self._quiet(fn), self.rec.fmt)
+            except Exception as e:      # noqa - a broken watch must not stop the scenario
+                out[k] = "<watch failed: %s: %s>" % (type(e).__name__, e)
+        return out
+
+    def begin(self):
+        if self.rollback == "django":
+            from django.db import transaction
+            self._django_atomic = transaction.atomic()
+            self._django_atomic.__enter__()
+            self._capture_django_mail()
+        self.before = self._snapshot()
+
+    def _capture_django_mail(self):
+        try:
+            from django.conf import settings
+            from django.core import mail
+            settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+            if not hasattr(mail, "outbox"):
+                mail.outbox = []
+            self._outbox_start = len(mail.outbox)
+        except Exception:       # noqa
+            pass
+
+    def end(self, error):
+        after = self._snapshot()       # still inside the transaction: shows what the scenario wrote
+        for k in self.watch:
+            b, a = self.before.get(k), after.get(k)
+            self.result["watch"].append({"name": k, "before": b, "after": a, "changes": _diff(b, a)})
+        self._collect_django_mail()
+        r = self.rollback
+        if r == "django" and self._django_atomic is not None:
+            from django.db import transaction
+            transaction.set_rollback(True)
+            self._django_atomic.__exit__(None, None, None)
+            self.result["rolled_back"] = True
+        elif r is not None and not isinstance(r, str) and hasattr(r, "rollback"):
+            self._quiet(r.rollback)
+            self.result["rolled_back"] = True
+        self.result["commits"] = self.commits
+        if self.commits:
+            self.result["warning"] = ("the code committed %d transaction(s) inside the sandbox: those changes were NOT "
+                                      "rolled back" % self.commits)
+        elif r is None:
+            self.result["warning"] = "no rollback strategy: writes made by the scenario persist"
+        if error is not None:
+            self.result["error"] = {"type": type(error).__name__, "message": str(error)[:500]}
+
+    def _collect_django_mail(self):
+        try:
+            from django.core import mail
+            for m in getattr(mail, "outbox", [])[self._outbox_start:]:
+                self.result["emails"].append({"subject": m.subject, "to": len(m.to), "from_app": True})
+        except Exception:       # noqa
+            pass
+
+
+def _diff(before, after, prefix=""):
+    """[{path, before, after}] between two plain values (dicts compared key by key)."""
+    if isinstance(before, dict) and isinstance(after, dict):
+        out = []
+        for k in list(before) + [k for k in after if k not in before]:
+            out.extend(_diff(before.get(k), after.get(k), prefix + str(k) + "."))
+        return out
+    if isinstance(before, list) and isinstance(after, list) and len(before) == len(after):
+        out = []
+        for i, (b, a) in enumerate(zip(before, after)):
+            out.extend(_diff(b, a, "%s%d." % (prefix, i)))
+        return out
+    return [] if before == after else [{"path": prefix.rstrip(".") or "value", "before": before, "after": after}]
+
+
+class TraceApi(object):
+    """What `import investigate_trace` gives a harness while it runs under trace_py.py."""
+
+    def __init__(self, recorder):
+        self.rec = recorder
+
+    @contextlib.contextmanager
+    def sandbox(self, name="sandbox", rollback=None, watch=None):
+        """Run the block in a rolled-back transaction, watching `watch` = {name: callable} before/after."""
+        sb = Sandbox(self.rec, name, rollback, watch)
+        sb.begin()
+        self.rec.sandbox = sb
+        error = None
+        try:
+            yield sb
+        except BaseException as e:      # noqa - recorded, rolled back, re-raised
+            error = e
+            raise
+        finally:
+            self.rec.sandbox = None
+            sb.end(error)
+            self.rec.sandboxes.append(sb.result)
+
+    def module(self):
+        m = types.ModuleType("investigate_trace")
+        m.sandbox = self.sandbox
+        m.__doc__ = "Runtime API of trace_py.py: sandbox(name, rollback=..., watch={...})"
+        return m
 
 
 class Recorder(object):
@@ -298,6 +536,8 @@ class Recorder(object):
         self.log.active = not entry
         self.frames = {}              # id(frame) -> {"line": last line, "snap": {...}}
         self.depth = 0
+        self.sandbox = None           # the Sandbox currently open, if any
+        self.sandboxes = []           # finished sandboxes, written to the log
 
     def global_trace(self, frame, event, arg):
         if event != "call":
@@ -308,11 +548,13 @@ class Recorder(object):
             return None
         if code.co_name == "<module>" and "/.investigate/" not in code.co_filename:
             return None        # importing app modules: definitions, not data flow
+        if not code.co_flags & CO_NEWLOCALS and "/.investigate/" not in code.co_filename:
+            return None        # a class body being defined (functions always have CO_NEWLOCALS)
         self.depth += 1
         snap = self.snaps.snapshot(frame)
         args = {k: snap[k] for k in code.co_varnames[:code.co_argcount + code.co_kwonlyargcount] if k in snap and k != "self"}
         owner = type(frame.f_locals["self"]).__name__ + "." if "self" in frame.f_locals else ""
-        if not self.log.active and (code.co_name == self.entry or (owner + code.co_name).endswith(self.entry)):
+        if self.entry and not self.log.active and (code.co_name == self.entry or (owner + code.co_name).endswith(self.entry)):
             self.log.active, self.entry_frame = True, id(frame)
         self.frames[id(frame)] = {"line": None, "snap": snap}
         self.log.emit({"ev": "call", "file": self.files.rel(code.co_filename), "line": frame.f_lineno,
@@ -363,9 +605,13 @@ class TraceRunner(object):
         self.files = AppFiles(args.root, args.include_tests, args.focus)
         self.log = EventLog(args.max_events)
         self.recorder = Recorder(self.files, ValueFormatter(not args.no_mask), self.log, args.entry)
+        self.guard = None if args.allow_network else NetworkGuard(self.recorder, args.allow_host)
 
     def run(self, target):
         self.recorder.probe.install_sqlite()
+        if self.guard:
+            self.guard.install()
+        sys.modules["investigate_trace"] = TraceApi(self.recorder).module()
         sys.path.insert(0, os.path.realpath(self.a.root))
         runner = self._runner(target)
         status, error, code = "ok", None, 0
@@ -383,7 +629,14 @@ class TraceRunner(object):
         finally:
             sys.settrace(None)
             threading.settrace(None)
-            self.log.write(self.a.out, self.files.root.rstrip(os.sep), status, error)
+            extra = {}
+            if self.a.env:
+                extra["environment"] = self.a.env
+            if self.recorder.sandboxes:
+                extra["sandboxes"] = self.recorder.sandboxes
+            if self.guard and self.guard.blocked:
+                extra["network_blocked"] = self.guard.blocked
+            self.log.write(self.a.out, self.files.root.rstrip(os.sep), status, error, extra)
         return code
 
     @staticmethod
@@ -405,6 +658,9 @@ def main():
     ap.add_argument("--focus", action="append", default=[], help="only trace files whose path contains this (repeatable)")
     ap.add_argument("--entry", help="record only while inside this function (e.g. sign_in or AuthService.sign_in)")
     ap.add_argument("--no-mask", action="store_true", help="don't redact secret-looking values")
+    ap.add_argument("--env", help="label the run with its environment (test, development)")
+    ap.add_argument("--allow-host", action="append", default=[], help="also allow outbound connections to this host")
+    ap.add_argument("--allow-network", action="store_true", help="don't block outbound network connections")
     ap.add_argument("target", nargs=argparse.REMAINDER, help="-- script.py [args] | -- -m module [args]")
     a = ap.parse_args()
     target = a.target[1:] if a.target[:1] == ["--"] else a.target

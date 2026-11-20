@@ -39,18 +39,29 @@ class Renderer(object):
                 snippets.add(f.get("path"), f.get("line"))
         discovery = self.ws.optional_json("discovery.json", self.notes.append)
         out = os.path.abspath(out_path or self.ws.path("report.html"))
-        summary = SummaryWriter(self.inv, out).write()
+        summary = SummaryWriter(self.inv, out, traces).write()
         payload = {
             "meta": self.ws.meta, "investigation": self.inv, "traces": traces, "sources": snippets.build(),
             "context": self.ws.optional_json("context.json", self.notes.append), "stacktrace": stacktrace,
             "discovery": {"stack": discovery.get("stack"), "frameworks": discovery.get("frameworks")} if discovery else None,
             "summary_md": summary,
+            "reference_data": self._reference_data(),
         }
         with open(out, "w") as fh:
             fh.write(ReportBuilder().build(payload))
         with open(self.ws.path("summary.md"), "w") as fh:
             fh.write(summary)
         return RenderResult([], warnings, out, summary)
+
+    def _reference_data(self):
+        """{name: contents of its data file} for reference_data entries with a `path` (already masked)."""
+        out = {}
+        for r in self.inv.get("reference_data") or []:
+            if r.get("path"):
+                data = self.ws.optional_json(r["path"], self.notes.append)
+                if data is not None:
+                    out[r["name"]] = data
+        return out
 
     def _traces(self, snippets, warnings):
         """Compact recorded traces per scenario; their lines are embedded as code too."""

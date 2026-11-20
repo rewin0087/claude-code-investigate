@@ -88,6 +88,12 @@ class TestRunnerFinder(object):
         self.repo, self.files, self.fs = repo, files, set(files)
         self.stack, self.frameworks = stack, frameworks
 
+    def python(self):
+        """The project's interpreter: a venv inside the repo when there is one."""
+        venv = next((os.path.join(self.repo, c) for c in (".venv/bin/python", "venv/bin/python", "env/bin/python")
+                     if os.path.exists(os.path.join(self.repo, c))), None)
+        return venv or shutil.which("python3") or "python3"
+
     def runners(self):
         cmds = []
         if "RSpec" in self.frameworks or any(f.startswith("spec/") and f.endswith("_spec.rb") for f in self.files):
@@ -109,18 +115,47 @@ class TestRunnerFinder(object):
             return {"stack": "python", "runner": "django", "cmd": "<python> manage.py test <dotted.path>", "env": ""}
         return {"stack": "python", "runner": "script", "cmd": "<python> <file>", "env": ""}
 
+    def dev_runners(self):
+        """How to run a harness against the LOCAL development database (always inside a sandbox)."""
+        out = []
+        if "Rails" in self.frameworks:
+            out.append({"stack": "ruby", "cmd": "RAILS_ENV=development bin/rails runner <harness.rb>",
+                        "sandbox": "InvestigateTrace.sandbox(name, watch: {...}) { ... }"})
+        elif "ruby" in self.stack:
+            out.append({"stack": "ruby", "cmd": "bundle exec ruby <harness.rb>", "sandbox": "InvestigateTrace.sandbox(...)"})
+        if "Django" in self.frameworks:
+            out.append({"stack": "python", "cmd": "DJANGO_SETTINGS_MODULE=%s <python> trace_py.py --root <REPO> --env development --out <OUT_DIR>/trace/<SC>.json -- <harness.py>"
+                        % (self._django_settings() or "<project>.settings"),
+                        "sandbox": 'investigate_trace.sandbox(name, rollback="django", watch={...})'})
+        elif "python" in self.stack:
+            out.append({"stack": "python", "cmd": "<python> trace_py.py --root <REPO> --env development --out <OUT_DIR>/trace/<SC>.json -- <harness.py>",
+                        "sandbox": "investigate_trace.sandbox(name, rollback=<SQLAlchemy session or DB-API connection>, watch={...})"})
+        if any(s.startswith("javascript") for s in self.stack):
+            out.append({"stack": "javascript", "cmd": "NODE_ENV=development node <harness.js>",
+                        "sandbox": "wrap the scenario in the ORM's transaction and roll it back (prisma.$transaction + throw, knex trx.rollback)"})
+        return out
+
+    def _django_settings(self):
+        try:
+            with open(os.path.join(self.repo, "manage.py"), errors="replace") as fh:
+                m = re.search(r"DJANGO_SETTINGS_MODULE['\"],\s*['\"]([\w.]+)['\"]", fh.read())
+                return m.group(1) if m else None
+        except OSError:
+            return None
+
     def tracers(self):
         """Which runtime tracers apply, and which interpreters to use."""
         out = []
         if "python" in self.stack:
-            venv = next((os.path.join(self.repo, c) for c in (".venv/bin/python", "venv/bin/python", "env/bin/python")
-                         if os.path.exists(os.path.join(self.repo, c))), None)
-            out.append({"stack": "python", "tracer": "trace_py.py", "interpreter": venv or shutil.which("python3") or "python3",
+            out.append({"stack": "python", "tracer": "trace_py.py", "interpreter": self.python(),
                         "note": "run with the project's own interpreter (venv) so its packages import"})
         if "ruby" in self.stack:
             out.append({"stack": "ruby", "tracer": "trace_rb.rb", "interpreter": shutil.which("ruby") or "ruby",
                         "note": "load with RUBYOPT=-r<trace_rb.rb> under `bundle exec`; captures SQL and Net::HTTP too"})
         return out
+
+
+TRACERS_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 class AppDiscovery(object):
@@ -130,8 +165,15 @@ class AppDiscovery(object):
     def run(self, focus=None):
         stack, frameworks = StackDetector(self.repo, self.files).detect()
         runners = TestRunnerFinder(self.repo, self.files, stack, frameworks)
+        py, tracer = runners.python(), os.path.join(TRACERS_DIR, "trace_py.py")
+
+        def concrete(cmds):       # copy-pasteable: the project's interpreter and the tracer's real path
+            for c in cmds:
+                c["cmd"] = c["cmd"].replace("<python> trace_py.py", "%s %s" % (py, tracer)).replace("<python>", py)
+            return cmds
         return {"stack": stack, "frameworks": frameworks, "categories": FileCategorizer(self.files).categorize(focus),
-                "test_runners": runners.runners(), "tracers": runners.tracers(),
+                "test_runners": concrete(runners.runners()), "dev_runners": concrete(runners.dev_runners()),
+                "tracers": runners.tracers(),
                 "database": DbConfigReader(self.repo, self.files).read()}
 
     @staticmethod
@@ -147,6 +189,9 @@ class AppDiscovery(object):
             L.extend("  " + f for f in c["files"])
         L.append("\nTest runners:")
         L.extend(["  %-9s %s %s" % (t["runner"], t["env"], t["cmd"]) for t in d["test_runners"]] or ["  none detected"])
+        if d.get("dev_runners"):
+            L.append("\nDevelopment-environment runs (only with --env dev; always inside a rolled-back sandbox):")
+            L.extend("  %-10s %s\n             sandbox: %s" % (r["stack"], r["cmd"], r["sandbox"]) for r in d["dev_runners"])
         L.append("\nRuntime tracers available:")
         L.extend(["  %s via %s (%s)" % (t["tracer"], t["interpreter"], t["note"]) for t in d["tracers"]] or
                  ["  none for this stack: simulate statically, or add temporary log probes inside a throwaway harness"])

@@ -10,9 +10,15 @@
       "name": "investigate",
       "source": "./",
       "description": "Trace and simulate data flow through your app; reproduce bugs and stack traces with an interactive report.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "category": "development",
-      "keywords": ["debugging", "data-flow", "simulation", "tracing", "stack-trace"]
+      "keywords": [
+        "debugging",
+        "data-flow",
+        "simulation",
+        "tracing",
+        "stack-trace"
+      ]
     }
   ]
 }

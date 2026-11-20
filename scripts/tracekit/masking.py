@@ -5,7 +5,8 @@ import re
 SECRET_COL = re.compile(r"(password|passwd|pwd|secret|token|api_?key|private_?key|salt|hash|digest|otp|ssn|cvv|card_?number"
                         r"|iban|encrypted|credential|session_?id|cookie|signature)", re.I)
 EMAIL = re.compile(r"([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
-PHONE = re.compile(r"(?<!\d)(\+?\d[\d\s().-]{7,}\d)(?!\d)")
+PHONE = re.compile(r"(?<!\d)(\+?[\d(][\d\s().-]{7,}\d)(?!\d)")
+DATE_LIKE = re.compile(r"^\d{4}-\d{2}-\d{2}([ T][\d:.]+)?(Z|[+-]\d{2}:?\d{2})?$")
 PERSON_COL = re.compile(r"(^|_)(first_?name|last_?name|full_?name|name|phone|mobile|address|street|postcode|zip|dob|birth"
                         r"|ip_?address|national_id|tax_id)($|_)", re.I)
 
@@ -29,7 +30,12 @@ class RowMasker(object):
         s = EMAIL.sub(lambda m: "%s***@%s" % (m.group(1), m.group(2)), v)
         if PERSON_COL.search(col):
             return ((s[:1] + "***") if s else s)[:500]
-        return (PHONE.sub("[phone]", s) if PHONE.fullmatch(s.strip() or "x") else s)[:500]
+        return ("[phone]" if self.looks_like_phone(s) else s)[:500]
+
+    @staticmethod
+    def looks_like_phone(s):
+        s = s.strip()
+        return bool(PHONE.fullmatch(s)) and not DATE_LIKE.match(s) and sum(c.isdigit() for c in s) >= 9
 
     @staticmethod
     def to_json(cols, rows):

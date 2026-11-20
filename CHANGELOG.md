@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-20
+
+### Added
+- **Development-environment runs** (`--env dev`): scenarios run on the local development database
+  inside a rolled-back sandbox. Ruby uses `InvestigateTrace.sandbox` (an ActiveRecord transaction,
+  with ActionMailer / ActiveJob captured). Python uses `investigate_trace.sandbox` (Django atomic,
+  a SQLAlchemy session or a DB-API connection, with Django mail captured). Watched records are
+  recorded before → after, and COMMITs that escape the rollback are detected and reported.
+- **Reference data** (`--record Order#4512`, `table:id`, `"table where …"`): `records.py` fetches
+  the records a bug affected and their parents / children, via declared foreign keys or `*_id`
+  columns. It is read-only and masked. Scenarios link the records they replay.
+- **Database activity** in every trace digest and report: tables read, and every INSERT / UPDATE /
+  DELETE with its line and values.
+- **Outbound network guard** in both tracers: connections to anything but loopback are blocked
+  and recorded (`--allow-host` / `TRACE_ALLOW_HOSTS`, `--allow-network` / `TRACE_ALLOW_NETWORK`).
+- Discovery lists how to run a harness against the development environment.
+- Report: environment tags, a Reference data card, Run environment (sandbox) and Database
+  activity panels.
+
+### Changed
+- ActiveRecord objects in Ruby traces are shown attribute by attribute (`@order.status: pending → refunded`).
+- Less trace noise: class bodies, transaction plumbing (BEGIN / SAVEPOINT), duplicate SQL from
+  nested cursor wrappers, and exceptions handled inside libraries are hidden.
+- Local SQLite databases in WAL mode (the Rails default) open read-only through `PRAGMA query_only`.
+- Phone masking no longer treats dates as phone numbers.
+
 ## [1.0.0] - 2026-11-20
 
 First public release.
@@ -36,3 +62,4 @@ First public release.
   metadata, a sitemap and a social preview image.
 
 [1.0.0]: https://github.com/rewin0087/claude-code-investigate/releases/tag/v1.0.0
+[1.1.0]: https://github.com/rewin0087/claude-code-investigate/compare/v1.0.0...v1.1.0

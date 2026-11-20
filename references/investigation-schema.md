@@ -52,6 +52,12 @@ and `- ` lists.
     // kind: schema | model | factory | fixture | seed | db | contract | test | context | trace | doc
   ],
 
+  // Existing records the bug affected (records.py / dbquery.py output saved under data/). Masked.
+  "reference_data": [
+    {"name": "order-4512", "ref": "Order#4512", "source": "development DB", "path": "data/order-4512.json",
+     "note": "total 2000, already refunded 1500: the next refund crosses the total"}
+  ],
+
   "scenarios": [{
     "id": "SC1",                                   // required, unique
     "title": "Sign in with valid credentials",      // required
@@ -63,6 +69,8 @@ and `- ` lists.
     // pass (behaves correctly) | expected_error (correctly rejects) | fail (wrong result) |
     // bug (wrong + root cause found) | risk (works but fragile) | reproduced (the reported error happens) | inconclusive
     "evidence": "simulated",                       // simulated (traced by reading code) | executed (run with a tracer)
+    "environment": "test",                         // where it ran: test | development (dev runs are sandboxed + rolled back)
+    "records": ["order-4512"],                     // reference_data names this scenario replays
     "trace": "trace/SC1.json",                     // relative to OUT_DIR; required when evidence = executed
     "harness": "harness/sim_sc1_spec.rb",           // the throwaway file that ran it, if any
 
@@ -154,6 +162,10 @@ and `- ` lists.
   `db.users[1].locked_at`. Use the same path when the same value changes again.
 - `evidence: "executed"` only when the scenario really ran under `trace_py.py` / `trace_rb.rb`
   (or the test suite) and `trace` points at its log. Values in executed steps must come from the trace.
+- `environment: "development"` + `evidence: "executed"` means the scenario ran on the local dev DB
+  inside `InvestigateTrace.sandbox` / `investigate_trace.sandbox`. render.py reads the trace's sandbox
+  results and warns when a dev run wasn't sandboxed, or when COMMITs persisted and the scenario
+  doesn't mention it.
 - Never put real secrets or personal data in the file. Use `[valid password]`, `ana@example.com`.
   Values that came from a local DB are already masked; keep them masked.
 - Severity: **critical** = data loss/corruption, security hole, or crash on a common path.
